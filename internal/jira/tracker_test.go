@@ -602,7 +602,10 @@ func (s *configStore) ListWisps(_ context.Context, _ types.WispFilter) ([]*types
 func (s *configStore) RunInTransaction(_ context.Context, _ string, _ func(tx storage.Transaction) error) error {
 	return nil
 }
-func (s *configStore) Close() error { return nil }
+func (s *configStore) SlotGet(_ context.Context, _, _ string) (string, error) { return "", nil }
+func (s *configStore) SlotSet(_ context.Context, _, _, _, _ string) error     { return nil }
+func (s *configStore) SlotClear(_ context.Context, _, _, _ string) error      { return nil }
+func (s *configStore) Close() error                                           { return nil }
 
 func TestFetchIssuesIncludesPullJQLInQuery(t *testing.T) {
 	var capturedJQL string
