@@ -150,7 +150,7 @@ create, update, show, or close operation).`,
 
 			// Check if issue has open blockers (GH#962)
 			if !force {
-				blocked, blockers, err := store.IsBlocked(ctx, id)
+				blocked, blockers, err := mustDeps(store).IsBlocked(ctx, id)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Error checking blockers for %s: %v\n", id, err)
 					continue
@@ -192,7 +192,7 @@ create, update, show, or close operation).`,
 
 		// Handle --suggest-next flag in direct mode
 		if suggestNext && len(resolvedIDs) == 1 && closedCount > 0 {
-			unblocked, err := store.GetNewlyUnblockedByClose(ctx, resolvedIDs[0])
+			unblocked, err := mustDeps(store).GetNewlyUnblockedByClose(ctx, resolvedIDs[0])
 			if err == nil && len(unblocked) > 0 {
 				if jsonOutput {
 					outputJSON(map[string]interface{}{
@@ -239,7 +239,7 @@ create, update, show, or close operation).`,
 				fmt.Fprintf(os.Stderr, "Warning: could not get ready issues: %v\n", err)
 			} else if len(readyIssues) > 0 {
 				nextIssue := readyIssues[0]
-				err := store.ClaimIssue(ctx, nextIssue.ID, actor)
+				err := mustBulk(store).ClaimIssue(ctx, nextIssue.ID, actor)
 				if err == nil {
 					claimedNextIssue = nextIssue
 					if jsonOutput {
@@ -366,7 +366,7 @@ func checkGateSatisfaction(issue *types.Issue) error {
 // parent molecule, and if so, closes the molecule root. Ordinary epics remain
 // open when all children finish so they can become explicitly close-eligible
 // instead of being closed as a side effect of the final child close.
-func autoCloseCompletedMolecule(ctx context.Context, s storage.DoltStorage, closedStepID, actorName, session string) {
+func autoCloseCompletedMolecule(ctx context.Context, s storage.Storage, closedStepID, actorName, session string) {
 	moleculeID := findParentMolecule(ctx, s, closedStepID)
 	if moleculeID == "" {
 		return // Not part of a molecule
