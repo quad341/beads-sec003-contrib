@@ -1,4 +1,4 @@
-//go:build cgo
+//go:build cgo && dolt_only
 
 package main
 
@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/steveyegge/beads/internal/beads"
@@ -1667,46 +1666,6 @@ func TestInitDoltMetadataNoGit(t *testing.T) {
 	if _, err := os.Stat(sqlitePath); err == nil {
 		t.Errorf("unexpected sqlite database created in dolt mode")
 	}
-}
-
-// buildBDOnce builds the bd binary once for subprocess tests in this file.
-// Uses sync.Once for efficiency when multiple tests need the binary.
-var (
-	initTestBD     string
-	initTestBDOnce sync.Once
-	initTestBDErr  error
-)
-
-func buildBDForInitTests(t *testing.T) string {
-	t.Helper()
-	initTestBDOnce.Do(func() {
-		// Check if bd binary exists in repo root (../../bd from cmd/bd/)
-		bdBinary := "bd"
-		if runtime.GOOS == "windows" {
-			bdBinary = "bd.exe"
-		}
-		repoRoot := filepath.Join("..", "..")
-		existingBD := filepath.Join(repoRoot, bdBinary)
-		if _, err := os.Stat(existingBD); err == nil {
-			initTestBD, _ = filepath.Abs(existingBD)
-			return
-		}
-		// Fall back to building
-		tmpDir, err := os.MkdirTemp("", "bd-init-test-*")
-		if err != nil {
-			initTestBDErr = fmt.Errorf("failed to create temp dir: %w", err)
-			return
-		}
-		initTestBD = filepath.Join(tmpDir, bdBinary)
-		cmd := exec.Command("go", "build", "-tags", "gms_pure_go", "-o", initTestBD, ".")
-		if out, err := cmd.CombinedOutput(); err != nil {
-			initTestBDErr = fmt.Errorf("go build failed: %v\n%s", err, out)
-		}
-	})
-	if initTestBDErr != nil {
-		t.Fatalf("Failed to build bd binary: %v", initTestBDErr)
-	}
-	return initTestBD
 }
 
 func setupBareParentInitWorktree(t *testing.T) (string, string) {
