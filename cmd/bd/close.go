@@ -126,7 +126,7 @@ create, update, show, or close operation).`,
 			// Get issue for checks (nil issue is handled by validateIssueClosable)
 			issue, _ := store.GetIssue(ctx, id)
 
-			if err := validateIssueClosable(id, issue, force); err != nil {
+			if err := validateIssueClosable(id, issue, actor, force); err != nil {
 				fmt.Fprintf(os.Stderr, "%s\n", err)
 				continue
 			}
