@@ -181,6 +181,26 @@ Examples:
 			cfg = configfile.DefaultConfig()
 		}
 
+		// bd bootstrap is a Dolt-clone-based recovery artifact (clones from
+		// remote, restores from .beads/backup/, imports from issues.jsonl).
+		// PG-backed projects don't have these mechanisms — users provision
+		// the database via `bd init --backend=postgres --dsn=…`. Refuse
+		// cleanly rather than fall through and create a Dolt store
+		// alongside the configured PG store. (be-xz4)
+		if cfg.GetBackend() == configfile.BackendPostgres {
+			if jsonOutput {
+				outputJSON(map[string]interface{}{
+					"action": "none",
+					"error":  "bd bootstrap is not supported on the postgres backend",
+					"hint":   "use 'bd init --backend=postgres --dsn=<dsn>' to provision a postgres-backed project",
+				})
+				os.Exit(1)
+			}
+			fmt.Fprintf(os.Stderr, "Error: bd bootstrap is not supported on the postgres backend\n")
+			fmt.Fprintf(os.Stderr, "Hint: use 'bd init --backend=postgres --dsn=<dsn>' to provision a postgres-backed project\n")
+			os.Exit(1)
+		}
+
 		// Determine action based on state
 		plan := detectBootstrapAction(beadsDir, cfg)
 
