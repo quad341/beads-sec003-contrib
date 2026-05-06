@@ -212,6 +212,7 @@ func TestApplyConfigDefaults_TestModeUseSentinelPort(t *testing.T) {
 	// Save and restore env vars.
 	origTestMode := os.Getenv("BEADS_TEST_MODE")
 	origPort := os.Getenv("BEADS_DOLT_PORT")
+	origServerPort := os.Getenv("BEADS_DOLT_SERVER_PORT")
 	defer func() {
 		os.Setenv("BEADS_TEST_MODE", origTestMode)
 		if origPort == "" {
@@ -219,10 +220,16 @@ func TestApplyConfigDefaults_TestModeUseSentinelPort(t *testing.T) {
 		} else {
 			os.Setenv("BEADS_DOLT_PORT", origPort)
 		}
+		if origServerPort == "" {
+			os.Unsetenv("BEADS_DOLT_SERVER_PORT")
+		} else {
+			os.Setenv("BEADS_DOLT_SERVER_PORT", origServerPort)
+		}
 	}()
 
 	os.Setenv("BEADS_TEST_MODE", "1")
 	os.Unsetenv("BEADS_DOLT_PORT")
+	os.Unsetenv("BEADS_DOLT_SERVER_PORT")
 
 	cfg := &Config{} // ServerPort defaults to 0
 	applyConfigDefaults(cfg)
@@ -237,6 +244,7 @@ func TestApplyConfigDefaults_TestModeUseSentinelPort(t *testing.T) {
 func TestApplyConfigDefaults_TestModeWithPort(t *testing.T) {
 	origTestMode := os.Getenv("BEADS_TEST_MODE")
 	origPort := os.Getenv("BEADS_DOLT_PORT")
+	origServerPort := os.Getenv("BEADS_DOLT_SERVER_PORT")
 	defer func() {
 		os.Setenv("BEADS_TEST_MODE", origTestMode)
 		if origPort == "" {
@@ -244,10 +252,16 @@ func TestApplyConfigDefaults_TestModeWithPort(t *testing.T) {
 		} else {
 			os.Setenv("BEADS_DOLT_PORT", origPort)
 		}
+		if origServerPort == "" {
+			os.Unsetenv("BEADS_DOLT_SERVER_PORT")
+		} else {
+			os.Setenv("BEADS_DOLT_SERVER_PORT", origServerPort)
+		}
 	}()
 
 	os.Setenv("BEADS_TEST_MODE", "1")
 	os.Setenv("BEADS_DOLT_PORT", "13307")
+	os.Unsetenv("BEADS_DOLT_SERVER_PORT")
 
 	cfg := &Config{}
 	applyConfigDefaults(cfg)
@@ -264,6 +278,7 @@ func TestApplyConfigDefaults_TestModeWithPort(t *testing.T) {
 func TestApplyConfigDefaults_TestModeBlocksProdPort(t *testing.T) {
 	origTestMode := os.Getenv("BEADS_TEST_MODE")
 	origPort := os.Getenv("BEADS_DOLT_PORT")
+	origServerPort := os.Getenv("BEADS_DOLT_SERVER_PORT")
 	defer func() {
 		if origTestMode == "" {
 			os.Unsetenv("BEADS_TEST_MODE")
@@ -275,10 +290,16 @@ func TestApplyConfigDefaults_TestModeBlocksProdPort(t *testing.T) {
 		} else {
 			os.Setenv("BEADS_DOLT_PORT", origPort)
 		}
+		if origServerPort == "" {
+			os.Unsetenv("BEADS_DOLT_SERVER_PORT")
+		} else {
+			os.Setenv("BEADS_DOLT_SERVER_PORT", origServerPort)
+		}
 	}()
 
 	os.Setenv("BEADS_TEST_MODE", "1")
 	os.Setenv("BEADS_DOLT_PORT", "3307") // Production port
+	os.Unsetenv("BEADS_DOLT_SERVER_PORT")
 
 	cfg := &Config{}
 	applyConfigDefaults(cfg)
@@ -295,6 +316,7 @@ func TestApplyConfigDefaults_TestModeBlocksProdPort(t *testing.T) {
 func TestApplyConfigDefaults_EnvOverridesConfig(t *testing.T) {
 	origTestMode := os.Getenv("BEADS_TEST_MODE")
 	origPort := os.Getenv("BEADS_DOLT_PORT")
+	origServerPort := os.Getenv("BEADS_DOLT_SERVER_PORT")
 	defer func() {
 		if origTestMode == "" {
 			os.Unsetenv("BEADS_TEST_MODE")
@@ -306,10 +328,16 @@ func TestApplyConfigDefaults_EnvOverridesConfig(t *testing.T) {
 		} else {
 			os.Setenv("BEADS_DOLT_PORT", origPort)
 		}
+		if origServerPort == "" {
+			os.Unsetenv("BEADS_DOLT_SERVER_PORT")
+		} else {
+			os.Setenv("BEADS_DOLT_SERVER_PORT", origServerPort)
+		}
 	}()
 
 	os.Unsetenv("BEADS_TEST_MODE") // NOT in test mode
 	os.Setenv("BEADS_DOLT_PORT", "19999")
+	os.Unsetenv("BEADS_DOLT_SERVER_PORT")
 
 	// Simulate metadata.json having set port to production default
 	cfg := &Config{ServerPort: DefaultSQLPort}
@@ -327,6 +355,7 @@ func TestApplyConfigDefaults_EnvOverridesConfig(t *testing.T) {
 func TestApplyConfigDefaults_ProductionFallback(t *testing.T) {
 	origTestMode := os.Getenv("BEADS_TEST_MODE")
 	origPort := os.Getenv("BEADS_DOLT_PORT")
+	origServerPort := os.Getenv("BEADS_DOLT_SERVER_PORT")
 	defer func() {
 		if origTestMode == "" {
 			os.Unsetenv("BEADS_TEST_MODE")
@@ -338,10 +367,16 @@ func TestApplyConfigDefaults_ProductionFallback(t *testing.T) {
 		} else {
 			os.Setenv("BEADS_DOLT_PORT", origPort)
 		}
+		if origServerPort == "" {
+			os.Unsetenv("BEADS_DOLT_SERVER_PORT")
+		} else {
+			os.Setenv("BEADS_DOLT_SERVER_PORT", origServerPort)
+		}
 	}()
 
 	os.Unsetenv("BEADS_TEST_MODE")
 	os.Unsetenv("BEADS_DOLT_PORT")
+	os.Unsetenv("BEADS_DOLT_SERVER_PORT")
 
 	cfg := &Config{}
 	applyConfigDefaults(cfg)
