@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/steveyegge/beads/internal/beads"
+	"github.com/steveyegge/beads/internal/configfile"
 	"github.com/steveyegge/beads/internal/types"
 )
 
@@ -51,10 +53,30 @@ Examples:
 			absDBPath = dbPath
 		}
 
+		// be-8hy689: report the actual backend in use based on metadata.json,
+		// not whatever happens to be on disk. PG-backed rigs frequently keep
+		// stale embeddeddolt/ artifacts from a prior Dolt init or migration;
+		// reporting "Database: .../embeddeddolt" against a live PG store
+		// previously misled investigators by hours.
+		backend := configfile.BackendDolt
+		var fileCfg *configfile.Config
+		if beadsDir := beads.FindBeadsDir(); beadsDir != "" {
+			if c, err := configfile.Load(beadsDir); err == nil && c != nil {
+				fileCfg = c
+				backend = c.GetBackend()
+			}
+		}
+
 		// Build info structure
 		info := map[string]interface{}{
 			"database_path": absDBPath,
 			"mode":          "direct",
+			"backend":       backend,
+		}
+		if backend == configfile.BackendPostgres && fileCfg != nil && fileCfg.PostgresDSN != "" {
+			// PostgresDSN is already credential-stripped at write time
+			// (see init_postgres.go → dsn.Strip).
+			info["postgres_dsn"] = fileCfg.PostgresDSN
 		}
 
 		// Get issue count from direct store
@@ -135,7 +157,16 @@ Examples:
 		// Human-readable output
 		fmt.Println("\nBeads Database Information")
 		fmt.Println("===========================")
-		fmt.Printf("Database: %s\n", absDBPath)
+		fmt.Printf("Backend: %s\n", backend)
+		switch backend {
+		case configfile.BackendPostgres:
+			if fileCfg != nil && fileCfg.PostgresDSN != "" {
+				// Already password-stripped at persist time.
+				fmt.Printf("DSN: %s\n", fileCfg.PostgresDSN)
+			}
+		default:
+			fmt.Printf("Database: %s\n", absDBPath)
+		}
 		fmt.Printf("Mode: direct\n")
 
 		// Show issue count
