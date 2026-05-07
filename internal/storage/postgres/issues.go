@@ -322,10 +322,15 @@ func (s *PostgresStore) DeleteIssue(ctx context.Context, id string) error {
 	})
 }
 
-// SearchIssues runs a flexible filter query against the issues table.
-// Supports the subset of types.IssueFilter that the smoke path needs;
-// less-common filters return ErrNotImplemented sentinels.
-func (s *PostgresStore) SearchIssues(ctx context.Context, query string, filter types.IssueFilter) ([]*types.Issue, error) {
+// buildSearchClause assembles the WHERE clause and positional argument list for
+// SearchIssues-style queries. It returns the WHERE fragment with a leading
+// " WHERE " when at least one clause is emitted, or "" when there are no
+// clauses (so callers can concatenate it directly into a SELECT). The args
+// slice is in placeholder order. The error return is reserved for future
+// filter-validation paths; this helper does not currently fail.
+//
+//nolint:unparam // err is reserved for future filter-validation paths
+func buildSearchClause(query string, filter types.IssueFilter) (string, []any, error) {
 	clauses := []string{}
 	args := []any{}
 	next := 1
@@ -387,6 +392,17 @@ func (s *PostgresStore) SearchIssues(ctx context.Context, query string, filter t
 	where := ""
 	if len(clauses) > 0 {
 		where = " WHERE " + strings.Join(clauses, " AND ")
+	}
+	return where, args, nil
+}
+
+// SearchIssues runs a flexible filter query against the issues table.
+// Supports the subset of types.IssueFilter that the smoke path needs;
+// less-common filters return ErrNotImplemented sentinels.
+func (s *PostgresStore) SearchIssues(ctx context.Context, query string, filter types.IssueFilter) ([]*types.Issue, error) {
+	where, args, err := buildSearchClause(query, filter)
+	if err != nil {
+		return nil, err
 	}
 	limit := ""
 	if filter.Limit > 0 {
