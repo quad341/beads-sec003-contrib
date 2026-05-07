@@ -136,3 +136,73 @@ func TestStripIsIdempotent(t *testing.T) {
 		t.Errorf("Strip not idempotent\n first:  %s\n second: %s", first, second)
 	}
 }
+
+// TestComposeRoundTripPreservesSoftSSLMode pins be-g4x0eq's invariant:
+// Strip → Compose must preserve every libpq sslmode value, not silently
+// promote/downgrade. The persisted DSN lives in metadata.json and is
+// committed to git, so any silent change here is durable and propagates
+// to every clone.
+//
+// Today this fails for {allow, prefer, verify-ca, verify-full} because
+// pgconn.ParseConfig collapses sslmode into *tls.Config and the current
+// dsn.ConfigToConnString fallback emits only {disable, require} based on
+// TLSConfig nil/non-nil. See be-g4x0eq for fix sketch (preserve original
+// DSN textually rather than going through pgconn for the round-trip).
+func TestComposeRoundTripPreservesSoftSSLMode(t *testing.T) {
+	for _, mode := range []string{
+		"disable",
+		"allow",
+		"prefer",
+		"require",
+		"verify-ca",
+		"verify-full",
+	} {
+		t.Run(mode, func(t *testing.T) {
+			original := "postgres://bd:s3cret@db.example.com:5432/beads?sslmode=" + mode
+
+			stripped, err := Strip(original)
+			if err != nil {
+				t.Fatalf("Strip(%q): %v", original, err)
+			}
+			if strings.Contains(stripped, "s3cret") {
+				t.Fatalf("stripped form leaked password: %s", stripped)
+			}
+
+			composed := Compose(stripped, "newpw")
+
+			// The persisted (stripped) form and the recomposed form must
+			// both carry the input's sslmode verbatim. Probe both because
+			// the bug surfaces in either Strip's emit OR Compose's emit:
+			// they share ConfigToConnString.
+			wantFrag := "sslmode=" + mode
+			if !strings.Contains(stripped, wantFrag) {
+				t.Errorf("Strip dropped sslmode=%s\n input:    %s\n stripped: %s",
+					mode, original, stripped)
+			}
+			if !strings.Contains(composed, wantFrag) {
+				t.Errorf("Compose dropped sslmode=%s\n stripped: %s\n composed: %s",
+					mode, stripped, composed)
+			}
+
+			// And: must not silently substitute a different mode. Catches
+			// the specific failure-shape today (everything → require for
+			// non-disable inputs).
+			for _, other := range []string{
+				"disable", "allow", "prefer", "require", "verify-ca", "verify-full",
+			} {
+				if other == mode {
+					continue
+				}
+				badFrag := "sslmode=" + other
+				if strings.Contains(stripped, badFrag) {
+					t.Errorf("Strip silently substituted sslmode %s → %s\n input:    %s\n stripped: %s",
+						mode, other, original, stripped)
+				}
+				if strings.Contains(composed, badFrag) {
+					t.Errorf("Compose silently substituted sslmode %s → %s\n stripped: %s\n composed: %s",
+						mode, other, stripped, composed)
+				}
+			}
+		})
+	}
+}
