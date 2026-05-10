@@ -137,6 +137,41 @@ func (s *storageOnlyStub) GetAllEventsSince(context.Context, time.Time) ([]*type
 	return nil, nil
 }
 
+// — Iter* stubs (be-jaavsb / be-yinl4d) —
+//
+// All Iter* methods return an empty SliceIter; the storage-only stub does
+// not retain an issue corpus so the iterators have nothing to walk. The
+// tests that exercise the decorator do not iterate, they just need the
+// stub to satisfy the Storage interface.
+
+func (s *storageOnlyStub) IterIssues(context.Context, string, types.IssueFilter) (storage.Iter[types.Issue], error) {
+	return storage.NewSliceIter[types.Issue](nil), nil
+}
+func (s *storageOnlyStub) IterDependentsWithMetadata(context.Context, string) (storage.Iter[types.IssueWithDependencyMetadata], error) {
+	return storage.NewSliceIter[types.IssueWithDependencyMetadata](nil), nil
+}
+func (s *storageOnlyStub) IterDependenciesWithMetadata(context.Context, string) (storage.Iter[types.IssueWithDependencyMetadata], error) {
+	return storage.NewSliceIter[types.IssueWithDependencyMetadata](nil), nil
+}
+func (s *storageOnlyStub) IterIssueComments(context.Context, string) (storage.Iter[types.Comment], error) {
+	return storage.NewSliceIter[types.Comment](nil), nil
+}
+func (s *storageOnlyStub) IterEvents(context.Context, string, int) (storage.Iter[types.Event], error) {
+	return storage.NewSliceIter[types.Event](nil), nil
+}
+func (s *storageOnlyStub) IterAllEventsSince(context.Context, time.Time) (storage.Iter[types.Event], error) {
+	return storage.NewSliceIter[types.Event](nil), nil
+}
+func (s *storageOnlyStub) IterReadyWork(context.Context, types.WorkFilter) (storage.Iter[types.Issue], error) {
+	return storage.NewSliceIter[types.Issue](nil), nil
+}
+func (s *storageOnlyStub) IterBlockedIssues(context.Context, types.WorkFilter) (storage.Iter[types.BlockedIssue], error) {
+	return storage.NewSliceIter[types.BlockedIssue](nil), nil
+}
+func (s *storageOnlyStub) IterWisps(context.Context, types.WispFilter) (storage.Iter[types.Issue], error) {
+	return storage.NewSliceIter[types.Issue](nil), nil
+}
+
 func (s *storageOnlyStub) GetStatistics(context.Context) (*types.Statistics, error) { return nil, nil }
 func (s *storageOnlyStub) SetConfig(context.Context, string, string) error          { return nil }
 func (s *storageOnlyStub) GetConfig(context.Context, string) (string, error)        { return "", nil }
