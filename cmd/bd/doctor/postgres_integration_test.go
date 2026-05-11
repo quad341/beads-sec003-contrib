@@ -94,8 +94,8 @@ func TestRunPostgresHealthChecks_RealServer(t *testing.T) {
 	repo := initPGFixture(t)
 
 	checks := RunPostgresHealthChecks(repo)
-	if len(checks) != 5 {
-		t.Fatalf("expected 5 checks, got %d", len(checks))
+	if len(checks) != 6 {
+		t.Fatalf("expected 6 checks, got %d", len(checks))
 	}
 
 	wantNames := []string{
@@ -104,6 +104,7 @@ func TestRunPostgresHealthChecks_RealServer(t *testing.T) {
 		"Postgres Tables",
 		"Postgres Activity",
 		"Repo Fingerprint",
+		"Referential Integrity",
 	}
 	for i, name := range wantNames {
 		if checks[i].Name != name {
@@ -138,6 +139,11 @@ func TestRunPostgresHealthChecks_RealServer(t *testing.T) {
 	if !strings.Contains(checks[4].Message, "N/A (not a git repository)") {
 		t.Errorf("fingerprint Message = %q, want 'N/A (not a git repository)' on non-git repo", checks[4].Message)
 	}
+
+	// Referential Integrity on a fresh DB has nothing to find.
+	if !strings.Contains(checks[5].Message, "All cross-table references resolve") {
+		t.Errorf("integrity Message = %q, want 'All cross-table references resolve' on clean DB", checks[5].Message)
+	}
 }
 
 // initPGFixtureGitRepo is initPGFixture + git init of the returned repo so
@@ -163,8 +169,8 @@ func TestCheckPGRepoFingerprint_SeedThenVerify(t *testing.T) {
 
 	// First run: fresh DB (no marker yet) → expect Seeded.
 	first := RunPostgresHealthChecks(repo)
-	if len(first) != 5 {
-		t.Fatalf("expected 5 checks, got %d", len(first))
+	if len(first) != 6 {
+		t.Fatalf("expected 6 checks, got %d", len(first))
 	}
 	fp := first[4]
 	if fp.Name != "Repo Fingerprint" {
@@ -268,9 +274,119 @@ func TestRunPostgresHealthChecks_AuthFailure(t *testing.T) {
 		t.Errorf("connection Detail = %q, want substring 'authentication'", checks[0].Detail)
 	}
 	// Downstream checks should be marked skipped.
-	for i := 1; i < 5; i++ {
+	for i := 1; i < 6; i++ {
 		if checks[i].Status != StatusError {
 			t.Errorf("checks[%d] (%s) Status = %s, want StatusError when connection fails", i, checks[i].Name, checks[i].Status)
+		}
+	}
+}
+
+func TestCheckPGReferentialIntegrity_Clean(t *testing.T) {
+	repo := initPGFixture(t)
+
+	checks := RunPostgresHealthChecks(repo)
+	ri := checks[5]
+	if ri.Name != "Referential Integrity" {
+		t.Fatalf("checks[5].Name = %q, want \"Referential Integrity\"", ri.Name)
+	}
+	if ri.Status != StatusOK {
+		t.Fatalf("Status = %q, want StatusOK on fresh DB; Message=%q Detail=%q", ri.Status, ri.Message, ri.Detail)
+	}
+	if !strings.Contains(ri.Message, "All cross-table references resolve") {
+		t.Errorf("Message = %q, want clean-DB phrasing", ri.Message)
+	}
+}
+
+func TestCheckPGReferentialIntegrity_OrphanInDependencies(t *testing.T) {
+	repo := initPGFixture(t)
+	beadsDir := filepath.Join(repo, ".beads")
+
+	conn, err := openPGConn(beadsDir)
+	if err != nil {
+		t.Fatalf("openPGConn: %v", err)
+	}
+	defer conn.Close()
+	ctx := context.Background()
+
+	// Seed a real parent issue so the dependencies.issue_id FK is satisfied.
+	// title/description/design/acceptance_criteria/notes are all NOT NULL.
+	if _, err := conn.pool.Exec(ctx,
+		`INSERT INTO issues (id, title, description, design, acceptance_criteria, notes,
+		                     status, priority, issue_type, owner)
+		 VALUES ('bd-aaaaaa', 'parent', '', '', '', '', 'open', 2, 'task', 'tester')`,
+	); err != nil {
+		t.Fatalf("seed parent issue: %v", err)
+	}
+
+	// Insert a dependency whose depends_on_id has no matching issue or wisp.
+	// dependencies.depends_on_id has NO FK in the PG schema — that is exactly
+	// the diagnostic gap this check exists to close.
+	if _, err := conn.pool.Exec(ctx,
+		`INSERT INTO dependencies (issue_id, depends_on_id, type)
+		 VALUES ('bd-aaaaaa', 'bd-zzzzzz-orphan', 'blocks')`,
+	); err != nil {
+		t.Fatalf("insert orphan dep: %v", err)
+	}
+
+	checks := RunPostgresHealthChecks(repo)
+	ri := checks[5]
+	if ri.Status != StatusError {
+		t.Fatalf("Status = %q, want StatusError when orphan present; Message=%q Detail=%q", ri.Status, ri.Message, ri.Detail)
+	}
+	if !strings.Contains(ri.Detail, "dependencies.depends_on_id") {
+		t.Errorf("Detail = %q, want it to name dependencies.depends_on_id", ri.Detail)
+	}
+	if !strings.Contains(ri.Detail, "bd-zzzzzz-orphan") {
+		t.Errorf("Detail = %q, want it to surface the orphan ID", ri.Detail)
+	}
+	if !strings.Contains(ri.Message, "orphan rows in 1 location") {
+		t.Errorf("Message = %q, want single-location summary", ri.Message)
+	}
+	if ri.Fix == "" {
+		t.Errorf("Fix is empty; want a remediation hint")
+	}
+}
+
+func TestCheckPGReferentialIntegrity_OrphanInMultipleWispTables(t *testing.T) {
+	repo := initPGFixture(t)
+	beadsDir := filepath.Join(repo, ".beads")
+
+	conn, err := openPGConn(beadsDir)
+	if err != nil {
+		t.Fatalf("openPGConn: %v", err)
+	}
+	defer conn.Close()
+	ctx := context.Background()
+
+	// wisp_* tables ship with ZERO FKs (be-4i7ax3 §4 D-5). Any insert lands
+	// without parent rows in `wisps` — that is the hazard.
+	if _, err := conn.pool.Exec(ctx,
+		`INSERT INTO wisp_labels (issue_id, label) VALUES ('orphan-wisp-1', 'stale')`,
+	); err != nil {
+		t.Fatalf("insert orphan wisp_label: %v", err)
+	}
+	if _, err := conn.pool.Exec(ctx,
+		`INSERT INTO wisp_comments (issue_id, author, text) VALUES ('orphan-wisp-2', 'tester', 'comment')`,
+	); err != nil {
+		t.Fatalf("insert orphan wisp_comment: %v", err)
+	}
+	if _, err := conn.pool.Exec(ctx,
+		`INSERT INTO wisp_events (issue_id, event_type, actor) VALUES ('orphan-wisp-3', 'created', 'tester')`,
+	); err != nil {
+		t.Fatalf("insert orphan wisp_event: %v", err)
+	}
+
+	checks := RunPostgresHealthChecks(repo)
+	ri := checks[5]
+	if ri.Status != StatusError {
+		t.Fatalf("Status = %q, want StatusError when orphans present; Message=%q Detail=%q", ri.Status, ri.Message, ri.Detail)
+	}
+	if !strings.Contains(ri.Message, "orphan rows in 3 location") {
+		t.Errorf("Message = %q, want 3-location summary", ri.Message)
+	}
+	for _, label := range []string{"wisp_labels.issue_id", "wisp_comments.issue_id", "wisp_events.issue_id"} {
+		if !strings.Contains(ri.Detail, label) {
+			t.Errorf("Detail = %q, want it to name %s", ri.Detail, label)
 		}
 	}
 }

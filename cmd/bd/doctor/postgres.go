@@ -187,6 +187,7 @@ func RunPostgresHealthChecks(path string) []DoctorCheck {
 			{Name: "Postgres Tables", Status: StatusOK, Message: na, Category: CategoryCore},
 			{Name: "Postgres Activity", Status: StatusOK, Message: na, Category: CategoryData},
 			{Name: "Repo Fingerprint", Status: StatusOK, Message: na, Category: CategoryCore},
+			{Name: "Referential Integrity", Status: StatusOK, Message: na, Category: CategoryCore},
 		}
 	}
 
@@ -207,6 +208,7 @@ func RunPostgresHealthChecks(path string) []DoctorCheck {
 			{Name: "Postgres Tables", Status: StatusError, Message: "Skipped (no connection)", Detail: failMsg, Category: CategoryCore},
 			{Name: "Postgres Activity", Status: StatusError, Message: "Skipped (no connection)", Detail: failMsg, Category: CategoryData},
 			{Name: "Repo Fingerprint", Status: StatusError, Message: "Skipped (no connection)", Detail: failMsg, Category: CategoryCore},
+			{Name: "Referential Integrity", Status: StatusError, Message: "Skipped (no connection)", Detail: failMsg, Category: CategoryCore},
 		}
 	}
 	defer conn.Close()
@@ -217,6 +219,7 @@ func RunPostgresHealthChecks(path string) []DoctorCheck {
 		checkPGTables(conn),
 		checkPGRecentActivity(conn),
 		checkPGRepoFingerprint(conn, path),
+		checkPGReferentialIntegrity(conn),
 	}
 }
 
@@ -512,6 +515,154 @@ func checkPGRepoFingerprint(conn *pgConn, path string) DoctorCheck {
 		Name:     "Repo Fingerprint",
 		Status:   StatusOK,
 		Message:  fmt.Sprintf("Verified (%s)", truncateID(currentRepoID)),
+		Category: CategoryCore,
+	}
+}
+
+// pgOrphanQueries enumerates the cross-table references that PG does NOT
+// enforce with foreign keys (see internal/storage/postgres/migrations/
+// 0001_initial.up.sql). Each entry runs a `WHERE col NOT IN (parent ids)`
+// scan and surfaces up to 10 orphan IDs in the check's Detail. The shape
+// mirrors the audit in be-4i7ax3 §4 D-5; bumping the parent set (e.g. if a
+// later migration adds a "thread" table that wisp_dependencies should
+// reference) means amending this slice.
+var pgOrphanQueries = []struct {
+	label string // table.column
+	query string
+}{
+	{
+		"dependencies.depends_on_id",
+		`SELECT depends_on_id FROM dependencies
+		   WHERE depends_on_id NOT IN (SELECT id FROM issues UNION SELECT id FROM wisps)
+		 LIMIT 10`,
+	},
+	{
+		"wisp_dependencies.issue_id",
+		`SELECT issue_id FROM wisp_dependencies
+		   WHERE issue_id NOT IN (SELECT id FROM issues UNION SELECT id FROM wisps)
+		 LIMIT 10`,
+	},
+	{
+		"wisp_dependencies.depends_on_id",
+		`SELECT depends_on_id FROM wisp_dependencies
+		   WHERE depends_on_id NOT IN (SELECT id FROM issues UNION SELECT id FROM wisps)
+		 LIMIT 10`,
+	},
+	{
+		"wisp_labels.issue_id",
+		`SELECT issue_id FROM wisp_labels
+		   WHERE issue_id NOT IN (SELECT id FROM wisps)
+		 LIMIT 10`,
+	},
+	{
+		"wisp_comments.issue_id",
+		`SELECT issue_id FROM wisp_comments
+		   WHERE issue_id NOT IN (SELECT id FROM wisps)
+		 LIMIT 10`,
+	},
+	{
+		"wisp_events.issue_id",
+		`SELECT issue_id FROM wisp_events
+		   WHERE issue_id NOT IN (SELECT id FROM wisps)
+		 LIMIT 10`,
+	},
+}
+
+// checkPGReferentialIntegrity scans for rows whose foreign-key references
+// would be invalid under the Dolt schema's enforced FKs. PG intentionally
+// drops some FKs (dependencies.depends_on_id) and ships zero FKs on the
+// wisp_* tables (internal/storage/postgres/migrations/0001_initial.up.sql),
+// so the same orphan classes the Dolt CHECK constraints would surface here
+// can only be caught by this scan.
+//
+// Each query is bounded with LIMIT 10 — the goal is a diagnostic sample,
+// not an exact count. A clean DB returns StatusOK; any orphan finding
+// returns StatusError naming the affected table.column and the first few
+// IDs so the operator can grep the audit log for the source of the
+// dangling row.
+func checkPGReferentialIntegrity(conn *pgConn) DoctorCheck {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	type orphanGroup struct {
+		label string
+		ids   []string
+	}
+	var findings []orphanGroup
+
+	for _, q := range pgOrphanQueries {
+		rows, err := conn.pool.Query(ctx, q.query)
+		if err != nil {
+			return DoctorCheck{
+				Name:     "Referential Integrity",
+				Status:   StatusWarning,
+				Message:  "Could not run orphan-row check",
+				Detail:   fmt.Sprintf("%s: %v", q.label, err),
+				Category: CategoryCore,
+			}
+		}
+		var ids []string
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err != nil {
+				rows.Close()
+				return DoctorCheck{
+					Name:     "Referential Integrity",
+					Status:   StatusWarning,
+					Message:  "Could not read orphan-row sample",
+					Detail:   fmt.Sprintf("%s: %v", q.label, err),
+					Category: CategoryCore,
+				}
+			}
+			ids = append(ids, id)
+		}
+		rowsErr := rows.Err()
+		rows.Close()
+		if rowsErr != nil {
+			return DoctorCheck{
+				Name:     "Referential Integrity",
+				Status:   StatusWarning,
+				Message:  "Could not finish orphan-row check",
+				Detail:   fmt.Sprintf("%s: %v", q.label, rowsErr),
+				Category: CategoryCore,
+			}
+		}
+		if len(ids) > 0 {
+			findings = append(findings, orphanGroup{label: q.label, ids: ids})
+		}
+	}
+
+	if len(findings) == 0 {
+		return DoctorCheck{
+			Name:     "Referential Integrity",
+			Status:   StatusOK,
+			Message:  "All cross-table references resolve",
+			Category: CategoryCore,
+		}
+	}
+
+	var detail strings.Builder
+	for i, f := range findings {
+		if i > 0 {
+			detail.WriteString("\n")
+		}
+		// The "+N more" suffix is informational; LIMIT 10 caps ids at 10
+		// so the operator knows when the sample is truncated.
+		more := ""
+		if len(f.ids) == 10 {
+			more = " (sample truncated at LIMIT 10)"
+		}
+		fmt.Fprintf(&detail, "%s: %d orphan(s) — sample: %s%s",
+			f.label, len(f.ids), strings.Join(f.ids, ", "), more)
+	}
+
+	return DoctorCheck{
+		Name:    "Referential Integrity",
+		Status:  StatusError,
+		Message: fmt.Sprintf("Found orphan rows in %d location(s)", len(findings)),
+		Detail:  detail.String(),
+		Fix: "Investigate root cause; orphans suggest a partial delete, an interrupted import, " +
+			"or schema drift. Audit log (events / wisp_events) may show the operation that left the orphan behind.",
 		Category: CategoryCore,
 	}
 }

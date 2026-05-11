@@ -58,8 +58,8 @@ func TestRunPostgresHealthChecks_NotPostgresBackend(t *testing.T) {
 	writeMetadata(t, beadsDir, `{"backend":"dolt"}`)
 
 	checks := RunPostgresHealthChecks(tmp)
-	if len(checks) != 5 {
-		t.Fatalf("expected 5 N/A checks, got %d", len(checks))
+	if len(checks) != 6 {
+		t.Fatalf("expected 6 N/A checks, got %d", len(checks))
 	}
 
 	expectedNames := []string{
@@ -68,6 +68,7 @@ func TestRunPostgresHealthChecks_NotPostgresBackend(t *testing.T) {
 		"Postgres Tables",
 		"Postgres Activity",
 		"Repo Fingerprint",
+		"Referential Integrity",
 	}
 	for i, c := range checks {
 		if c.Name != expectedNames[i] {
@@ -86,12 +87,12 @@ func TestRunPostgresHealthChecks_MissingDSN(t *testing.T) {
 	tmp := t.TempDir()
 	beadsDir := filepath.Join(tmp, ".beads")
 	// Postgres backend but no postgres_dsn → openPGConn returns descriptive
-	// error, all 5 checks surface as errors.
+	// error, all 6 checks surface as errors.
 	writeMetadata(t, beadsDir, `{"backend":"postgres"}`)
 
 	checks := RunPostgresHealthChecks(tmp)
-	if len(checks) != 5 {
-		t.Fatalf("expected 5 checks, got %d", len(checks))
+	if len(checks) != 6 {
+		t.Fatalf("expected 6 checks, got %d", len(checks))
 	}
 
 	// First entry should be the actionable connection error.
@@ -109,9 +110,9 @@ func TestRunPostgresHealthChecks_MissingDSN(t *testing.T) {
 		t.Errorf("checks[0].Fix is empty; want actionable next-step")
 	}
 
-	// Remaining checks (Schema/Tables/Activity/Repo Fingerprint) should be
-	// skipped-with-detail when the connection failed.
-	for i := 1; i < 5; i++ {
+	// Remaining checks (Schema/Tables/Activity/Repo Fingerprint/Referential
+	// Integrity) should be skipped-with-detail when the connection failed.
+	for i := 1; i < 6; i++ {
 		if checks[i].Status != StatusError {
 			t.Errorf("checks[%d] (%s): want StatusError (skipped after connect fail), got %s",
 				i, checks[i].Name, checks[i].Status)
