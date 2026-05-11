@@ -137,6 +137,45 @@ func TestStripIsIdempotent(t *testing.T) {
 	}
 }
 
+// TestStripRemovesURIQueryPassword pins the be-x7vuyp invariant: libpq
+// accepts `password=` as a URI query parameter, so Strip must clear it
+// just as it clears userinfo. Before the fix the textual URI path edited
+// userinfo only, leaving query-form passwords in the persisted DSN — which
+// gets committed to git via metadata.json, defeating the whole point of
+// the strip step.
+func TestStripRemovesURIQueryPassword(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{
+			name:  "query password only",
+			input: "postgres://bd@db.example.com/beads?password=querypw&sslmode=verify-full",
+		},
+		{
+			name:  "userinfo and query password together",
+			input: "postgres://bd:userpw@db.example.com/beads?password=querypw&sslmode=verify-full",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := Strip(tt.input)
+			if err != nil {
+				t.Fatalf("Strip(%q): %v", tt.input, err)
+			}
+			if strings.Contains(got, "querypw") {
+				t.Errorf("Strip leaked URI query-param password\n input:    %s\n stripped: %s", tt.input, got)
+			}
+			if strings.Contains(got, "userpw") {
+				t.Errorf("Strip leaked URI userinfo password\n input:    %s\n stripped: %s", tt.input, got)
+			}
+			if !strings.Contains(got, "sslmode=verify-full") {
+				t.Errorf("Strip dropped sslmode while removing password\n input:    %s\n stripped: %s", tt.input, got)
+			}
+		})
+	}
+}
+
 // TestComposeRoundTripPreservesSoftSSLMode pins be-g4x0eq's invariant:
 // Strip → Compose must preserve every libpq sslmode value, not silently
 // promote/downgrade. The persisted DSN lives in metadata.json and is

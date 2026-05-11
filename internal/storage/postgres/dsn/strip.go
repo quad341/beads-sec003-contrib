@@ -73,7 +73,8 @@ func isURIForm(s string) bool {
 
 // stripURIPassword removes the password from a URI-form DSN by editing the
 // parsed net/url, leaving everything else (host, port, db, query string)
-// verbatim.
+// verbatim. libpq accepts ?password=... in the URI query as well as in
+// userinfo, so both forms are cleared.
 func stripURIPassword(rawDSN string) (string, error) {
 	u, err := url.Parse(rawDSN)
 	if err != nil {
@@ -82,6 +83,10 @@ func stripURIPassword(rawDSN string) (string, error) {
 	}
 	if u.User != nil {
 		u.User = url.User(u.User.Username())
+	}
+	if q := u.Query(); q.Has("password") {
+		q.Del("password")
+		u.RawQuery = q.Encode()
 	}
 	return u.String(), nil
 }
