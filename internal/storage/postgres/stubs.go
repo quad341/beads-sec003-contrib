@@ -13,11 +13,8 @@ import (
 // backend). They return errNotImplemented from errors.go so callers see a
 // typed sentinel and CI can grep for `bd_phase=v2` work later.
 
-// --- BulkIssueStore (most landed in claim.go / idgen.go / issues.go) ---
-
-func (s *PostgresStore) DeleteIssues(ctx context.Context, ids []string, cascade, force, dryRun bool) (*types.DeleteIssuesResult, error) {
-	return nil, notImplemented("DeleteIssues")
-}
+// --- BulkIssueStore (most landed in claim.go / idgen.go / issues.go;
+//     DeleteIssues landed in delete.go) ---
 
 func (s *PostgresStore) DeleteIssuesBySourceRepo(ctx context.Context, sourceRepo string) (int, error) {
 	return 0, notImplemented("DeleteIssuesBySourceRepo")
