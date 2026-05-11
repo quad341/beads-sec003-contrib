@@ -3,7 +3,10 @@ package postgres
 import (
 	"errors"
 	"fmt"
+	"os"
 	"regexp"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // dsnURLRegex matches Postgres URL DSNs anywhere in a string.
@@ -28,10 +31,21 @@ func redactDSN(s string) string {
 }
 
 // wrapErr wraps an error with an operation prefix and DSN redaction. nil input
-// returns nil.
+// returns nil. SQLSTATE 28P01/28000 pgconn errors return a typed
+// *ErrAuthFailure so callers can detect auth failure via errors.As and the
+// user-visible message names BEADS_POSTGRES_PASSWORD as the env-var indirection.
 func wrapErr(op string, err error) error {
 	if err == nil {
 		return nil
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && (pgErr.Code == "28P01" || pgErr.Code == "28000") {
+		return &ErrAuthFailure{
+			PGCode:   pgErr.Code,
+			Op:       op,
+			EnvUnset: os.Getenv("BEADS_POSTGRES_PASSWORD") == "",
+			Cause:    errors.New(redactDSN(err.Error())),
+		}
 	}
 	return fmt.Errorf("postgres: %s: %s", op, redactDSN(err.Error()))
 }

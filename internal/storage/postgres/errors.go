@@ -33,6 +33,32 @@ func (e ErrUnknownDSNParam) Error() string {
 	return fmt.Sprintf("postgres: unknown DSN query parameter %q (see docs for allowed pgxpool tunings)", e.Name)
 }
 
+// ErrAuthFailure wraps a pgconn auth-failure error (SQLSTATE 28000 or 28P01)
+// and decorates it with a hint that mentions BEADS_POSTGRES_PASSWORD. bd
+// strips the password from --dsn at init and re-injects it from this env var
+// at runtime; when the env var is unset, the user sees a bare "password
+// authentication failed" with no pointer to the env-var indirection. See
+// bead be-d4b7dz.
+type ErrAuthFailure struct {
+	PGCode   string // "28P01" or "28000"
+	Op       string // wrapErr op name (e.g. "server version check")
+	EnvUnset bool   // true iff os.Getenv("BEADS_POSTGRES_PASSWORD") == ""
+	Cause    error  // the redacted upstream pgx/pgconn error
+}
+
+func (e *ErrAuthFailure) Error() string {
+	var hint string
+	if e.EnvUnset {
+		hint = "BEADS_POSTGRES_PASSWORD is not set; bd strips the password from --dsn at init time and reads it from this env var at runtime (see `bd init --backend=postgres --help`)"
+	} else {
+		hint = "BEADS_POSTGRES_PASSWORD is set but the password was rejected; verify it matches the role and that pg_hba.conf permits password auth from this host"
+	}
+	return fmt.Sprintf("postgres: %s: authentication failed (SQLSTATE %s): %v\n  hint: %s",
+		e.Op, e.PGCode, e.Cause, hint)
+}
+
+func (e *ErrAuthFailure) Unwrap() error { return e.Cause }
+
 // errNotImplemented is the canonical sentinel for methods that exist to satisfy
 // compile-time interface assertions but whose implementation has not landed
 // yet. See bead be-6fk.3 — v1 ships only the mayor-scope command path; the
