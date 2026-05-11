@@ -153,6 +153,10 @@ the server root.
 
 ### Backup & Migration
 
+For backend-to-backend migration to Postgres, see
+[docs/POSTGRES-BACKEND.md](docs/POSTGRES-BACKEND.md#reliability-bar).
+The contract and recovery playbook live there.
+
 Back up your database and migrate between modes using `bd backup`:
 
 ```bash
