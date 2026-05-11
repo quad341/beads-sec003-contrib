@@ -14,11 +14,8 @@ import (
 // typed sentinel and CI can grep for `bd_phase=v2` work later.
 
 // --- BulkIssueStore (most landed in claim.go / idgen.go / issues.go;
-//     DeleteIssues landed in delete.go) ---
-
-func (s *PostgresStore) DeleteIssuesBySourceRepo(ctx context.Context, sourceRepo string) (int, error) {
-	return 0, notImplemented("DeleteIssuesBySourceRepo")
-}
+//     DeleteIssues landed in delete.go;
+//     DeleteIssuesBySourceRepo landed in delete_by_source_repo.go) ---
 
 func (s *PostgresStore) UpdateIssueID(ctx context.Context, oldID, newID string, issue *types.Issue, actor string) error {
 	return notImplemented("UpdateIssueID")
