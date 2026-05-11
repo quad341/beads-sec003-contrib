@@ -186,7 +186,7 @@ func SyncCustomTypesTable(ctx context.Context, tx *sql.Tx, value string) error {
 	if value == "" {
 		return nil
 	}
-	names := parseTypesValue(value)
+	names := ParseTypesValue(value)
 	for _, name := range names {
 		if _, err := tx.ExecContext(ctx, "INSERT INTO custom_types (name) VALUES (?)", name); err != nil {
 			return err
@@ -195,8 +195,8 @@ func SyncCustomTypesTable(ctx context.Context, tx *sql.Tx, value string) error {
 	return nil
 }
 
-// parseTypesValue tries JSON array first, then falls back to comma-separated.
-func parseTypesValue(value string) []string {
+// ParseTypesValue tries JSON array first, then falls back to comma-separated.
+func ParseTypesValue(value string) []string {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return nil
