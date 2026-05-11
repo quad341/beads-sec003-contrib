@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/steveyegge/beads/internal/beads"
 	"github.com/steveyegge/beads/internal/storage"
 	_ "github.com/steveyegge/beads/internal/storage/postgres" // self-registers BackendPostgres
 	"github.com/steveyegge/beads/internal/storage/postgres/dsn"
@@ -93,8 +94,8 @@ func TestRunPostgresHealthChecks_RealServer(t *testing.T) {
 	repo := initPGFixture(t)
 
 	checks := RunPostgresHealthChecks(repo)
-	if len(checks) != 4 {
-		t.Fatalf("expected 4 checks, got %d", len(checks))
+	if len(checks) != 5 {
+		t.Fatalf("expected 5 checks, got %d", len(checks))
 	}
 
 	wantNames := []string{
@@ -102,6 +103,7 @@ func TestRunPostgresHealthChecks_RealServer(t *testing.T) {
 		"Postgres Schema Version",
 		"Postgres Tables",
 		"Postgres Activity",
+		"Repo Fingerprint",
 	}
 	for i, name := range wantNames {
 		if checks[i].Name != name {
@@ -128,6 +130,128 @@ func TestRunPostgresHealthChecks_RealServer(t *testing.T) {
 	if !strings.Contains(checks[3].Message, "fresh project") {
 		t.Errorf("activity Message = %q, want 'fresh project' on empty DB", checks[3].Message)
 	}
+
+	// Repo Fingerprint on an initPGFixture-built repo: the fixture's t.TempDir
+	// is not a git repo, so the check returns the N/A path. Specific seed /
+	// verify / mismatch coverage lives in TestCheckPGRepoFingerprint_* below
+	// where the test sets up a git-init'd repo.
+	if !strings.Contains(checks[4].Message, "N/A (not a git repository)") {
+		t.Errorf("fingerprint Message = %q, want 'N/A (not a git repository)' on non-git repo", checks[4].Message)
+	}
+}
+
+// initPGFixtureGitRepo is initPGFixture + git init of the returned repo so
+// beads.ComputeRepoIDForPath returns a real fingerprint instead of failing
+// with "not a git repository". The two-step setup is intentional: the PG
+// fixture is independent of git, and TestRunPostgresHealthChecks_RealServer
+// validates the non-git N/A path. Fingerprint-specific tests need the git
+// step on top.
+func initPGFixtureGitRepo(t *testing.T) string {
+	t.Helper()
+	repo := initPGFixture(t)
+	setupGitRepoInDir(t, repo)
+	return repo
+}
+
+func TestCheckPGRepoFingerprint_SeedThenVerify(t *testing.T) {
+	repo := initPGFixtureGitRepo(t)
+
+	want, err := beads.ComputeRepoIDForPath(repo)
+	if err != nil {
+		t.Fatalf("ComputeRepoIDForPath: %v", err)
+	}
+
+	// First run: fresh DB (no marker yet) → expect Seeded.
+	first := RunPostgresHealthChecks(repo)
+	if len(first) != 5 {
+		t.Fatalf("expected 5 checks, got %d", len(first))
+	}
+	fp := first[4]
+	if fp.Name != "Repo Fingerprint" {
+		t.Fatalf("checks[4].Name = %q, want \"Repo Fingerprint\"", fp.Name)
+	}
+	if fp.Status != StatusOK {
+		t.Fatalf("first-run Status = %q, want StatusOK; Message=%q Detail=%q", fp.Status, fp.Message, fp.Detail)
+	}
+	if !strings.Contains(fp.Message, "Seeded") {
+		t.Errorf("first-run Message = %q, want substring \"Seeded\"", fp.Message)
+	}
+	if !strings.Contains(fp.Message, want[:8]) {
+		t.Errorf("first-run Message = %q, want substring %q (computed fingerprint)", fp.Message, want[:8])
+	}
+
+	// Second run: marker now present and matches → expect Verified.
+	second := RunPostgresHealthChecks(repo)
+	fp2 := second[4]
+	if fp2.Status != StatusOK {
+		t.Fatalf("second-run Status = %q, want StatusOK; Message=%q Detail=%q", fp2.Status, fp2.Message, fp2.Detail)
+	}
+	if !strings.Contains(fp2.Message, "Verified") {
+		t.Errorf("second-run Message = %q, want substring \"Verified\"", fp2.Message)
+	}
+	if !strings.Contains(fp2.Message, want[:8]) {
+		t.Errorf("second-run Message = %q, want substring %q (computed fingerprint)", fp2.Message, want[:8])
+	}
+}
+
+func TestCheckPGRepoFingerprint_Mismatch(t *testing.T) {
+	repo := initPGFixtureGitRepo(t)
+
+	// Seed the marker via the first health-check run.
+	if got := RunPostgresHealthChecks(repo)[4].Status; got != StatusOK {
+		t.Fatalf("setup: first-run fingerprint Status = %q, want StatusOK", got)
+	}
+
+	// Replace the stored marker with a different value to simulate the
+	// "operator pointed bd at a different cluster" hazard.
+	beadsDir := filepath.Join(repo, ".beads")
+	conn, err := openPGConn(beadsDir)
+	if err != nil {
+		t.Fatalf("openPGConn: %v", err)
+	}
+	ctx := context.Background()
+	const otherFingerprint = "deadbeefdeadbeefdeadbeefdeadbeef"
+	if _, err := conn.pool.Exec(ctx,
+		`UPDATE metadata SET value = $1 WHERE key = 'repo_id'`,
+		otherFingerprint,
+	); err != nil {
+		conn.Close()
+		t.Fatalf("override stored repo_id: %v", err)
+	}
+	conn.Close()
+
+	checks := RunPostgresHealthChecks(repo)
+	fp := checks[4]
+	if fp.Status != StatusError {
+		t.Fatalf("Status = %q, want StatusError on mismatch; Message=%q Detail=%q", fp.Status, fp.Message, fp.Detail)
+	}
+	if !strings.Contains(fp.Message, "different repository") {
+		t.Errorf("Message = %q, want substring \"different repository\"", fp.Message)
+	}
+	if !strings.Contains(fp.Detail, otherFingerprint[:8]) {
+		t.Errorf("Detail = %q, want stored fingerprint prefix %q", fp.Detail, otherFingerprint[:8])
+	}
+	if !strings.Contains(fp.Detail, "different database than this workspace expects") {
+		t.Errorf("Detail = %q, want clear wrong-DB phrasing", fp.Detail)
+	}
+	if fp.Fix == "" {
+		t.Errorf("Fix is empty; want actionable remediation hint")
+	}
+}
+
+func TestCheckPGRepoFingerprint_NotGitRepository(t *testing.T) {
+	// initPGFixture sets up PG but NOT git, so ComputeRepoIDForPath returns
+	// "not a git repository" and the check short-circuits to N/A.
+	repo := initPGFixture(t)
+
+	checks := RunPostgresHealthChecks(repo)
+	fp := checks[4]
+	if fp.Status != StatusOK {
+		t.Fatalf("Status = %q, want StatusOK on non-git repo; Message=%q Detail=%q", fp.Status, fp.Message, fp.Detail)
+	}
+	if !strings.Contains(fp.Message, "N/A (not a git repository)") {
+		t.Errorf("Message = %q, want \"N/A (not a git repository)\"", fp.Message)
+	}
 }
 
 func TestRunPostgresHealthChecks_AuthFailure(t *testing.T) {
@@ -144,7 +268,7 @@ func TestRunPostgresHealthChecks_AuthFailure(t *testing.T) {
 		t.Errorf("connection Detail = %q, want substring 'authentication'", checks[0].Detail)
 	}
 	// Downstream checks should be marked skipped.
-	for i := 1; i < 4; i++ {
+	for i := 1; i < 5; i++ {
 		if checks[i].Status != StatusError {
 			t.Errorf("checks[%d] (%s) Status = %s, want StatusError when connection fails", i, checks[i].Name, checks[i].Status)
 		}

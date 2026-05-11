@@ -8,9 +8,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/steveyegge/beads/internal/beads"
 	"github.com/steveyegge/beads/internal/configfile"
 	"github.com/steveyegge/beads/internal/storage/postgres/dsn"
 )
@@ -184,6 +186,7 @@ func RunPostgresHealthChecks(path string) []DoctorCheck {
 			{Name: "Postgres Schema Version", Status: StatusOK, Message: na, Category: CategoryCore},
 			{Name: "Postgres Tables", Status: StatusOK, Message: na, Category: CategoryCore},
 			{Name: "Postgres Activity", Status: StatusOK, Message: na, Category: CategoryData},
+			{Name: "Repo Fingerprint", Status: StatusOK, Message: na, Category: CategoryCore},
 		}
 	}
 
@@ -203,6 +206,7 @@ func RunPostgresHealthChecks(path string) []DoctorCheck {
 			{Name: "Postgres Schema Version", Status: StatusError, Message: "Skipped (no connection)", Detail: failMsg, Category: CategoryCore},
 			{Name: "Postgres Tables", Status: StatusError, Message: "Skipped (no connection)", Detail: failMsg, Category: CategoryCore},
 			{Name: "Postgres Activity", Status: StatusError, Message: "Skipped (no connection)", Detail: failMsg, Category: CategoryData},
+			{Name: "Repo Fingerprint", Status: StatusError, Message: "Skipped (no connection)", Detail: failMsg, Category: CategoryCore},
 		}
 	}
 	defer conn.Close()
@@ -212,6 +216,7 @@ func RunPostgresHealthChecks(path string) []DoctorCheck {
 		checkPGSchemaVersion(conn),
 		checkPGTables(conn),
 		checkPGRecentActivity(conn),
+		checkPGRepoFingerprint(conn, path),
 	}
 }
 
@@ -244,7 +249,7 @@ func checkPGConnection(conn *pgConn) DoctorCheck {
 //
 // Update this when adding new entries to embeddedMigrations in
 // internal/storage/postgres/schema.go.
-const pgLatestEmbeddedVersion = 2
+const pgLatestEmbeddedVersion = 3
 
 func checkPGSchemaVersion(conn *pgConn) DoctorCheck {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -410,6 +415,104 @@ func checkPGRecentActivity(conn *pgConn) DoctorCheck {
 		Message:  fmt.Sprintf("Last write %s ago", roundDuration(age)),
 		Detail:   "Most recent issues.updated_at: " + human,
 		Category: CategoryData,
+	}
+}
+
+// checkPGRepoFingerprint validates that the configured Postgres database
+// belongs to this repository. The hazard mirrors the Dolt-side check
+// (CheckRepoFingerprintWithStore in integrity.go): an operator switches the
+// DSN to a different cluster, metadata.json keeps pointing at the prior
+// fingerprint, and bd silently writes into the wrong database.
+//
+// The marker lives in the metadata table under key "repo_id" — the same key
+// and value format the Dolt backend uses. That parity is intentional so
+// (a) the bd doctor --fix path (cmd/bd/doctor/fix/metadata.go) repairs both
+// backends through one SetMetadata call, and (b) operators reading the row
+// directly see the same shape on both backends.
+//
+// First-run semantics: when no marker is present (fresh DB), the current
+// repo_id is seeded into the metadata table and the check returns StatusOK.
+// The seed uses INSERT … ON CONFLICT DO NOTHING so it is idempotent even
+// under concurrent first-run races between two bd processes.
+func checkPGRepoFingerprint(conn *pgConn, path string) DoctorCheck {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	currentRepoID, err := beads.ComputeRepoIDForPath(path)
+	if err != nil {
+		if strings.Contains(err.Error(), "not a git repository") {
+			return DoctorCheck{
+				Name:     "Repo Fingerprint",
+				Status:   StatusOK,
+				Message:  "N/A (not a git repository)",
+				Category: CategoryCore,
+			}
+		}
+		return DoctorCheck{
+			Name:     "Repo Fingerprint",
+			Status:   StatusWarning,
+			Message:  "Unable to compute current repo ID",
+			Detail:   err.Error(),
+			Category: CategoryCore,
+		}
+	}
+
+	var storedRepoID string
+	err = conn.pool.QueryRow(ctx,
+		`SELECT value FROM metadata WHERE key = 'repo_id'`,
+	).Scan(&storedRepoID)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return DoctorCheck{
+			Name:     "Repo Fingerprint",
+			Status:   StatusWarning,
+			Message:  "Unable to read repo fingerprint",
+			Detail:   err.Error(),
+			Category: CategoryCore,
+		}
+	}
+
+	if errors.Is(err, pgx.ErrNoRows) || storedRepoID == "" {
+		if _, werr := conn.pool.Exec(ctx,
+			`INSERT INTO metadata (key, value) VALUES ('repo_id', $1)
+			 ON CONFLICT (key) DO NOTHING`,
+			currentRepoID,
+		); werr != nil {
+			return DoctorCheck{
+				Name:     "Repo Fingerprint",
+				Status:   StatusWarning,
+				Message:  "Failed to seed repo fingerprint",
+				Detail:   werr.Error(),
+				Category: CategoryCore,
+			}
+		}
+		return DoctorCheck{
+			Name:     "Repo Fingerprint",
+			Status:   StatusOK,
+			Message:  fmt.Sprintf("Seeded (%s)", truncateID(currentRepoID)),
+			Category: CategoryCore,
+		}
+	}
+
+	if storedRepoID != currentRepoID {
+		return DoctorCheck{
+			Name:    "Repo Fingerprint",
+			Status:  StatusError,
+			Message: "Database belongs to different repository",
+			Detail: fmt.Sprintf(
+				"stored: %s, current: %s — you connected to a different database than this workspace expects",
+				truncateID(storedRepoID),
+				truncateID(currentRepoID),
+			),
+			Fix:      "Verify postgres_dsn in metadata.json points at the intended database; if the git remote URL changed, run 'bd migrate --update-repo-id'",
+			Category: CategoryCore,
+		}
+	}
+
+	return DoctorCheck{
+		Name:     "Repo Fingerprint",
+		Status:   StatusOK,
+		Message:  fmt.Sprintf("Verified (%s)", truncateID(currentRepoID)),
+		Category: CategoryCore,
 	}
 }
 
