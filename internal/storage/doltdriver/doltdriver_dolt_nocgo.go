@@ -1,4 +1,4 @@
-//go:build !cgo
+//go:build !no_dolt && !cgo
 
 // Package doltdriver wires the Dolt backend into the storage registry.
 //
@@ -6,8 +6,9 @@
 // backend so storage.Open(ctx, storage.BackendDolt, cfg) dispatches here.
 //
 // Non-CGO build (this file): only external dolt sql-server is reachable;
-// embedded mode returns NoCGOEmbeddedErrMsg. The CGO build in doltdriver.go
-// supports both modes.
+// embedded mode returns NoCGOEmbeddedErrMsg. The CGO build in
+// doltdriver_dolt_cgo.go supports both modes. The no_dolt build in
+// doltdriver_no_dolt.go registers a stub factory that returns ErrNoDoltSupport.
 package doltdriver
 
 import (

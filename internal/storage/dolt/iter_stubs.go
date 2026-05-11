@@ -1,3 +1,5 @@
+//go:build !no_dolt
+
 // Package dolt — iter_stubs.go
 //
 // Slice-wrapping stubs for the Iter* methods whose fully streaming

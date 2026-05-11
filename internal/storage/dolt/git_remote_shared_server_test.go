@@ -1,4 +1,4 @@
-//go:build integration && dolt_only
+//go:build !no_dolt && integration && dolt_only
 
 package dolt
 

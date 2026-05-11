@@ -1,4 +1,4 @@
-//go:build cgo
+//go:build !no_dolt && cgo
 
 package main
 

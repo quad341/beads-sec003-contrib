@@ -1,4 +1,4 @@
-//go:build dolt_only
+//go:build !no_dolt && dolt_only
 
 // Package dolt provides cross-project data isolation tests for shared Dolt servers.
 //

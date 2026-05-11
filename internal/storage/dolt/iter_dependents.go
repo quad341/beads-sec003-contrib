@@ -1,3 +1,5 @@
+//go:build !no_dolt
+
 // Package dolt — iter_dependents.go
 //
 // Streaming iterator over the issues × dependencies join. Same dedicated-

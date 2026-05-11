@@ -1,3 +1,5 @@
+//go:build !no_dolt
+
 package server_test
 
 // doltserver_test.go covers the DoltServer lifecycle. Most tests start a real

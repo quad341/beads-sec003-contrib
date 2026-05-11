@@ -1,4 +1,4 @@
-//go:build dolt_only
+//go:build !no_dolt && dolt_only
 
 // Package dolt provides concurrency tests for embedded Dolt with multiple writers.
 //

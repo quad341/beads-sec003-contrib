@@ -1,4 +1,4 @@
-//go:build cgo
+//go:build !no_dolt && cgo
 
 // Package embeddeddolt — iter_stubs.go
 //

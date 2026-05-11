@@ -1,3 +1,5 @@
+//go:build !no_dolt
+
 // Rotation for dolt-server.log.
 //
 // Background: dolt sql-server writes stdout/stderr straight into

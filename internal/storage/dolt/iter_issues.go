@@ -1,3 +1,5 @@
+//go:build !no_dolt
+
 // Package dolt — iter_issues.go
 //
 // Streaming iterator over the issues table. Holds a DEDICATED *sql.Conn

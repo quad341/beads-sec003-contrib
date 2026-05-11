@@ -1,3 +1,5 @@
+//go:build !no_dolt
+
 package migrations
 
 import "database/sql"

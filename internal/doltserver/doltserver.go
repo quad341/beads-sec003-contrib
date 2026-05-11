@@ -1,3 +1,5 @@
+//go:build !no_dolt
+
 // Package doltserver manages the lifecycle of a local dolt sql-server process.
 // It provides transparent auto-start so that `bd init` and `bd <command>` work
 // without manual server management.

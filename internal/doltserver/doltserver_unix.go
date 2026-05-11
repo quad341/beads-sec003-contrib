@@ -1,4 +1,4 @@
-//go:build !windows
+//go:build !no_dolt && !windows
 
 package doltserver
 

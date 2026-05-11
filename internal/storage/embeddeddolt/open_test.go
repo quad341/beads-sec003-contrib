@@ -1,4 +1,4 @@
-//go:build cgo && dolt_only
+//go:build !no_dolt && cgo && dolt_only
 
 package embeddeddolt
 
