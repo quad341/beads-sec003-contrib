@@ -44,7 +44,7 @@ Reference implementations:
   [`internal/storage/dolt/config.go`](../internal/storage/dolt/config.go).
 - Postgres: [`syncCustomTypesPg`](../internal/storage/postgres/custom_sync.go)
   called from
-  [`PostgresStore.SetConfig`](../internal/storage/postgres/transaction.go)
+  [`PostgresStore.SetConfig`](../internal/storage/postgres/config.go)
   and the `pgxTransaction.SetConfig` tx variant.
 
 A future backend (sqlite, …) gets its own ~15-line sync helper
