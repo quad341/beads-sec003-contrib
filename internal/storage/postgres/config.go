@@ -6,12 +6,23 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/steveyegge/beads/internal/storage"
 	"github.com/steveyegge/beads/internal/types"
 )
 
-// SetConfig writes a config key.
+// SetConfig writes a config key. Non-synced keys take the fast path (single
+// setKV against the pool). The synced keys (types.custom, status.custom) are
+// routed through RunInTransaction so the config write and the corresponding
+// normalized-table sync land atomically, matching the dolt backend's
+// semantics. The dispatch logic lives in pgxTransaction.SetConfig so there is
+// a single switch to maintain.
 func (s *PostgresStore) SetConfig(ctx context.Context, key, value string) error {
-	return setKV(ctx, s.pool, "config", key, value)
+	if key != "types.custom" && key != "status.custom" {
+		return setKV(ctx, s.pool, "config", key, value)
+	}
+	return s.RunInTransaction(ctx, "", func(tx storage.Transaction) error {
+		return tx.SetConfig(ctx, key, value)
+	})
 }
 
 // GetConfig reads a config key. Empty key → empty value, no error.

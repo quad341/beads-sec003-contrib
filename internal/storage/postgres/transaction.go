@@ -326,9 +326,22 @@ func (t *pgxTransaction) GetLabels(ctx context.Context, issueID string) ([]strin
 	return getLabelsFromTable(ctx, t.tx, labelTable, issueID)
 }
 
-// SetConfig / GetConfig pass through.
+// SetConfig writes a config key inside the caller-supplied tx. For the synced
+// keys (types.custom, status.custom) the config write is followed by a
+// DELETE+INSERT into the corresponding normalized table inside the same tx,
+// so callers using RunInTransaction get atomic config-and-mirror semantics
+// matching the dolt backend.
 func (t *pgxTransaction) SetConfig(ctx context.Context, key, value string) error {
-	return setKV(ctx, t.tx, "config", key, value)
+	if err := setKV(ctx, t.tx, "config", key, value); err != nil {
+		return err
+	}
+	switch key {
+	case "types.custom":
+		return syncCustomTypesPg(ctx, t.tx, value)
+	case "status.custom":
+		return syncCustomStatusesPg(ctx, t.tx, value)
+	}
+	return nil
 }
 func (t *pgxTransaction) GetConfig(ctx context.Context, key string) (string, error) {
 	return getKV(ctx, t.tx, "config", key)
