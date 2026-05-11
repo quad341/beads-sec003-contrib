@@ -144,9 +144,13 @@ Examples:
 	},
 }
 
-// getGitActivity returns recent activity statistics.
-// Previously calculated from git log of issues.jsonl; now returns nil
-// as activity tracking has moved to Dolt-native queries.
+// getGitActivity returns recent activity statistics, or nil when activity
+// tracking is disabled. Originally derived from `git log` over issues.jsonl
+// in the SQLite era; that path was removed when bd moved to a database-backed
+// event log (both Dolt and Postgres carry the same events table). A
+// replacement implementation that queries the store-agnostic event log is
+// pending — until then this returns nil so the consumer collapses the
+// "Recent Activity" block out of the rendered output.
 func getGitActivity(_ int) *RecentActivitySummary {
 	return nil
 }

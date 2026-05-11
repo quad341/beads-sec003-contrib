@@ -434,54 +434,79 @@ func runDiagnostics(path string) doctorResult {
 
 	autoMigrateOnVersionBump(beadsDir)
 
-	// Check 1b: Dolt format compatibility (GH#2137)
-	// Must run before opening the database — old noms formats cause server panics.
-	doltFormatCheck := convertWithCategory(doctor.CheckDoltFormat(path), doctor.CategoryCore)
-	result.Checks = append(result.Checks, doltFormatCheck)
-	if doltFormatCheck.Status == statusError {
-		result.OverallOK = false
-	}
+	// Determine the configured backend so we can route to backend-aware probe
+	// sets. The Dolt path runs all the legacy SharedStore-tied checks; the
+	// Postgres path runs the postgres-specific probes (connection, schema
+	// version, tables, recent activity) and skips Dolt-only checks.
+	isPostgresBackend := doctor.IsPostgresBackend(beadsDir)
 
-	// GH#2636: Open a single shared store for all database checks.
+	// GH#2636: Open a single shared store for all database checks (Dolt only).
 	// This prevents the infinite Dolt server restart loop that occurred when each
 	// check opened and closed its own store (each close kills the server, each
 	// open restarts it). The shared store stays alive for the entire doctor run.
+	// Under postgres, this still constructs a nil-store wrapper — safe to call
+	// the WithStore-style checks against it; they short-circuit on nil. We
+	// gate the Dolt-shaped checks explicitly below so postgres output isn't
+	// padded with Dolt-flavored "skipped" entries.
 	sharedStore := doctor.NewSharedStore(path)
 	defer sharedStore.Close()
 
-	// Check 2: Database version
-	dbCheck := convertWithCategory(doctor.CheckDatabaseVersionWithStore(sharedStore, Version), doctor.CategoryCore)
-	result.Checks = append(result.Checks, dbCheck)
-	if dbCheck.Status == statusError {
-		result.OverallOK = false
-	}
+	if isPostgresBackend {
+		// Postgres probe set replaces the Dolt format / version / schema /
+		// integrity / ID-format checks. Each entry covers a dimension a
+		// Postgres operator actually cares about: can we connect, is the
+		// schema initialized and at the right version, are the expected
+		// tables present, and have any issues been written recently.
+		for _, dc := range doctor.RunPostgresHealthChecks(path) {
+			converted := convertDoctorCheck(dc)
+			result.Checks = append(result.Checks, converted)
+			if converted.Status == statusError {
+				result.OverallOK = false
+			}
+		}
+	} else {
+		// Check 1b: Dolt format compatibility (GH#2137)
+		// Must run before opening the database — old noms formats cause server panics.
+		doltFormatCheck := convertWithCategory(doctor.CheckDoltFormat(path), doctor.CategoryCore)
+		result.Checks = append(result.Checks, doltFormatCheck)
+		if doltFormatCheck.Status == statusError {
+			result.OverallOK = false
+		}
 
-	// Check 2a: Schema compatibility
-	schemaCheck := convertWithCategory(doctor.CheckSchemaCompatibilityWithStore(sharedStore), doctor.CategoryCore)
-	result.Checks = append(result.Checks, schemaCheck)
-	if schemaCheck.Status == statusError {
-		result.OverallOK = false
-	}
+		// Check 2: Database version
+		dbCheck := convertWithCategory(doctor.CheckDatabaseVersionWithStore(sharedStore, Version), doctor.CategoryCore)
+		result.Checks = append(result.Checks, dbCheck)
+		if dbCheck.Status == statusError {
+			result.OverallOK = false
+		}
 
-	// Check 2b: Repo fingerprint (detects wrong database or URL change)
-	fingerprintCheck := convertWithCategory(doctor.CheckRepoFingerprintWithStore(sharedStore, path), doctor.CategoryCore)
-	result.Checks = append(result.Checks, fingerprintCheck)
-	if fingerprintCheck.Status == statusError {
-		result.OverallOK = false
-	}
+		// Check 2a: Schema compatibility
+		schemaCheck := convertWithCategory(doctor.CheckSchemaCompatibilityWithStore(sharedStore), doctor.CategoryCore)
+		result.Checks = append(result.Checks, schemaCheck)
+		if schemaCheck.Status == statusError {
+			result.OverallOK = false
+		}
 
-	// Check 2c: Database integrity
-	integrityCheck := convertWithCategory(doctor.CheckDatabaseIntegrityWithStore(sharedStore), doctor.CategoryCore)
-	result.Checks = append(result.Checks, integrityCheck)
-	if integrityCheck.Status == statusError {
-		result.OverallOK = false
-	}
+		// Check 2b: Repo fingerprint (detects wrong database or URL change)
+		fingerprintCheck := convertWithCategory(doctor.CheckRepoFingerprintWithStore(sharedStore, path), doctor.CategoryCore)
+		result.Checks = append(result.Checks, fingerprintCheck)
+		if fingerprintCheck.Status == statusError {
+			result.OverallOK = false
+		}
 
-	// Check 3: ID format (hash vs sequential)
-	idCheck := convertWithCategory(doctor.CheckIDFormatWithStore(sharedStore), doctor.CategoryCore)
-	result.Checks = append(result.Checks, idCheck)
-	if idCheck.Status == statusWarning {
-		result.OverallOK = false
+		// Check 2c: Database integrity
+		integrityCheck := convertWithCategory(doctor.CheckDatabaseIntegrityWithStore(sharedStore), doctor.CategoryCore)
+		result.Checks = append(result.Checks, integrityCheck)
+		if integrityCheck.Status == statusError {
+			result.OverallOK = false
+		}
+
+		// Check 3: ID format (hash vs sequential)
+		idCheck := convertWithCategory(doctor.CheckIDFormatWithStore(sharedStore), doctor.CategoryCore)
+		result.Checks = append(result.Checks, idCheck)
+		if idCheck.Status == statusWarning {
+			result.OverallOK = false
+		}
 	}
 
 	// Network-based update checks are skipped in machine-readable and other
@@ -551,35 +576,41 @@ func runDiagnostics(path string) doctorResult {
 	result.Checks = append(result.Checks, remoteCheck)
 	// Don't fail overall for remote discrepancies, just warn
 
-	// Dolt health checks (connection, schema, issue count, status).
-	for _, dc := range doctor.RunDoltHealthChecks(path) {
-		result.Checks = append(result.Checks, convertDoctorCheck(dc))
+	// Dolt-specific health and federation probes only run on the Dolt backend.
+	// Postgres does not run a dolt sql-server, has no remotesapi port, and
+	// has no federation today — running these would produce false-positive
+	// errors and noisy "N/A" entries (the be-flo2kl complaint).
+	if !isPostgresBackend {
+		// Dolt health checks (connection, schema, issue count, status).
+		for _, dc := range doctor.RunDoltHealthChecks(path) {
+			result.Checks = append(result.Checks, convertDoctorCheck(dc))
+		}
+
+		// Federation health checks (bd-wkumz.6)
+		// Check 8d: Federation remotesapi port accessibility
+		remotesAPICheck := convertWithCategory(doctor.CheckFederationRemotesAPI(path), doctor.CategoryFederation)
+		result.Checks = append(result.Checks, remotesAPICheck)
+		// Don't fail overall for federation issues - they're only relevant for Dolt users
+
+		// Check 8e: Federation peer connectivity
+		peerConnCheck := convertWithCategory(doctor.CheckFederationPeerConnectivity(path), doctor.CategoryFederation)
+		result.Checks = append(result.Checks, peerConnCheck)
+
+		// Check 8f: Federation sync staleness
+		syncStalenessCheck := convertWithCategory(doctor.CheckFederationSyncStaleness(path), doctor.CategoryFederation)
+		result.Checks = append(result.Checks, syncStalenessCheck)
+
+		// Check 8g: Federation conflict detection
+		fedConflictsCheck := convertWithCategory(doctor.CheckFederationConflicts(path), doctor.CategoryFederation)
+		result.Checks = append(result.Checks, fedConflictsCheck)
+		if fedConflictsCheck.Status == statusError {
+			result.OverallOK = false // Unresolved conflicts are a real problem
+		}
+
+		// Check 8h: Dolt server mode configuration check
+		doltModeCheck := convertWithCategory(doctor.CheckDoltServerModeMismatch(path), doctor.CategoryFederation)
+		result.Checks = append(result.Checks, doltModeCheck)
 	}
-
-	// Federation health checks (bd-wkumz.6)
-	// Check 8d: Federation remotesapi port accessibility
-	remotesAPICheck := convertWithCategory(doctor.CheckFederationRemotesAPI(path), doctor.CategoryFederation)
-	result.Checks = append(result.Checks, remotesAPICheck)
-	// Don't fail overall for federation issues - they're only relevant for Dolt users
-
-	// Check 8e: Federation peer connectivity
-	peerConnCheck := convertWithCategory(doctor.CheckFederationPeerConnectivity(path), doctor.CategoryFederation)
-	result.Checks = append(result.Checks, peerConnCheck)
-
-	// Check 8f: Federation sync staleness
-	syncStalenessCheck := convertWithCategory(doctor.CheckFederationSyncStaleness(path), doctor.CategoryFederation)
-	result.Checks = append(result.Checks, syncStalenessCheck)
-
-	// Check 8g: Federation conflict detection
-	fedConflictsCheck := convertWithCategory(doctor.CheckFederationConflicts(path), doctor.CategoryFederation)
-	result.Checks = append(result.Checks, fedConflictsCheck)
-	if fedConflictsCheck.Status == statusError {
-		result.OverallOK = false // Unresolved conflicts are a real problem
-	}
-
-	// Check 8h: Dolt server mode configuration check
-	doltModeCheck := convertWithCategory(doctor.CheckDoltServerModeMismatch(path), doctor.CategoryFederation)
-	result.Checks = append(result.Checks, doltModeCheck)
 
 	// Check 9: Permissions
 	permCheck := convertWithCategory(doctor.CheckPermissionsWithStore(path, sharedStore), doctor.CategoryCore)
