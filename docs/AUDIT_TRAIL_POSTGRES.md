@@ -38,7 +38,10 @@ doesn't reach into PG-engine internals.
 - The `events` / `wisp_events` tables exist (P3).
 - The PG storage methods write to them on mutations (P3 §6 capability set).
 - `bd_commits` is **not** implemented in v1.
-- `bd migrate --to=postgres` does NOT carry events (P5 §7).
+- `bd migrate --to=postgres` does NOT carry events (P5 §7). For
+  migration mechanics and recovery, see
+  [`docs/POSTGRES-BACKEND.md`](POSTGRES-BACKEND.md) and
+  [`docs/MIGRATION-RECOVERY.md`](MIGRATION-RECOVERY.md).
 
 **Future work (P7+1, post-v1):**
 - Land `bd_commits` in a new migration `0002_audit_commits.up.sql`.
