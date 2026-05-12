@@ -55,6 +55,8 @@ func readyWorkFilterFromIssueFilter(filter types.IssueFilter) types.WorkFilter {
 		ExcludeTypes:   filter.ExcludeTypes,
 		MetadataFields: filter.MetadataFields,
 		HasMetadataKey: filter.HasMetadataKey,
+		MaxRows:        filter.MaxRows,
+		MaxRowsSource:  filter.MaxRowsSource,
 	}
 	if filter.IssueType != nil {
 		wf.Type = string(*filter.IssueType)
@@ -521,8 +523,11 @@ var listCmd = &cobra.Command{
 			sqlLimit++
 		}
 
+		maxRows, maxRowsSource := resolveMaxRows(cmd)
 		filter := types.IssueFilter{
-			Limit: sqlLimit,
+			Limit:         sqlLimit,
+			MaxRows:       maxRows,
+			MaxRowsSource: maxRowsSource,
 		}
 
 		// --ready flag: show only open issues (excludes hooked/in_progress/blocked/deferred) (bd-ihu31)
@@ -898,12 +903,14 @@ var listCmd = &cobra.Command{
 			var err error
 			issues, err = activeStore.GetReadyWork(ctx, wf)
 			if err != nil {
+				handleMaxRowsError(err)
 				FatalError("%v", err)
 			}
 		} else {
 			var err error
 			issues, err = activeStore.SearchIssues(ctx, "", filter)
 			if err != nil {
+				handleMaxRowsError(err)
 				FatalError("%v", err)
 			}
 		}
@@ -1161,6 +1168,9 @@ func init() {
 
 	// Ready filter: show only issues ready to be worked on (bd-ihu31)
 	listCmd.Flags().Bool("ready", false, "Show only ready issues (no active blockers, same semantics as bd ready)")
+
+	// Defensive row cap (be-x42v): exits 2 on overage, default disabled.
+	addMaxRowsFlag(listCmd)
 
 	// Note: --json flag is defined as a persistent flag in main.go, not here
 	rootCmd.AddCommand(listCmd)

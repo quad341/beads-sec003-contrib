@@ -188,8 +188,8 @@ func GetReadyWorkInTx(
 	whereSQL := "WHERE " + strings.Join(whereClauses, " AND ")
 
 	limitSQL := ""
-	if filter.Limit > 0 {
-		limitSQL = fmt.Sprintf(" LIMIT %d", filter.Limit)
+	if eff := EffectiveSearchLimit(filter.Limit, filter.MaxRows); eff > 0 {
+		limitSQL = fmt.Sprintf(" LIMIT %d", eff)
 	}
 
 	// Build ORDER BY clause based on SortPolicy.
@@ -264,6 +264,12 @@ func GetReadyWorkInTx(
 		if wErr == nil {
 			ordered = append(ordered, wisps...)
 		}
+	}
+
+	// Apply the defensive cap on the row count returned to the caller.
+	// LIMIT cap+1 was issued above so a count of cap+1 indicates overage.
+	if err := EnforceMaxRowsCap(len(ordered), filter.MaxRows, filter.MaxRowsSource); err != nil {
+		return nil, err
 	}
 
 	return ordered, nil
