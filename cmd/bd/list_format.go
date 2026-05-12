@@ -282,3 +282,16 @@ func countMetadataKeys(issue *types.Issue) int {
 	}
 	return len(data)
 }
+
+// shallowIssueForListJSON returns a value-copy of issue with heavy free-text
+// fields (Description, Design, Notes, AcceptanceCriteria) cleared. Metadata
+// is retained so callers can filter on metadata keys. Use --full to restore
+// the heavy payload; use 'bd show <id>' for a single issue's full body.
+func shallowIssueForListJSON(issue *types.Issue) *types.Issue {
+	shallow := *issue
+	shallow.Description = ""
+	shallow.Design = ""
+	shallow.Notes = ""
+	shallow.AcceptanceCriteria = ""
+	return &shallow
+}

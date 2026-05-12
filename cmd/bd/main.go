@@ -495,7 +495,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&changeDir, "directory", "C", "", "Change to this directory before running the command (like git -C)")
 	rootCmd.PersistentFlags().StringVar(&dbPath, "db", "", "Database path (default: auto-discover .beads/*.db)")
 	rootCmd.PersistentFlags().StringVar(&actor, "actor", "", "Actor name for audit trail (default: $BEADS_ACTOR, git user.name, $USER)")
-	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "Output in JSON format")
+	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "Output in JSON format. Heavy text fields (description, design, notes, acceptance_criteria) are omitted by default on bd list, bd dep tree, and bd graph; pass --full to include them.")
 	rootCmd.PersistentFlags().String("format", "", "Output format (json). Alias for --json")
 	_ = rootCmd.PersistentFlags().MarkHidden("format") // Hidden alias for CLI ergonomics
 	rootCmd.PersistentFlags().BoolVar(&sandboxMode, "sandbox", false, "Sandbox mode: disables auto-sync")
