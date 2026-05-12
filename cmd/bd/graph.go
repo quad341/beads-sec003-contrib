@@ -149,9 +149,19 @@ Examples:
 		layout := computeLayout(subgraph)
 
 		if jsonOutput {
+			root := subgraph.Root
+			issues := subgraph.Issues
+			if liteMode {
+				root = shallowIssueForListJSON(root)
+				shallowIssues := make([]*types.Issue, len(issues))
+				for i, issue := range issues {
+					shallowIssues[i] = shallowIssueForListJSON(issue)
+				}
+				issues = shallowIssues
+			}
 			outputJSON(map[string]interface{}{
-				"root":   subgraph.Root,
-				"issues": subgraph.Issues,
+				"root":   root,
+				"issues": issues,
 				"layout": layout,
 			})
 			return
