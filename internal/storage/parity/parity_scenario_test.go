@@ -1,4 +1,4 @@
-//go:build integration_parity
+//go:build gms_pure_go && integration_parity
 
 // Package parity hosts cross-backend UX parity tests. It is intentionally
 // distinct from internal/storage/postgres (which exercises the driver
@@ -14,18 +14,15 @@ package parity
 
 import (
 	"bytes"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"strings"
 	"testing"
 
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/steveyegge/beads/internal/storage/postgres/testfixture"
 )
 
@@ -79,23 +76,6 @@ var scenario = []scenarioStep{
 type scenarioState struct {
 	ids []string
 }
-
-// idPattern normalizes captured bd issue IDs to `<ID>` so byte-equality
-// comparisons across backends remain stable. The tmpDir-derived prefix
-// follows the shape `bd-parity-<digits>-<suffix>` where suffix is either
-// a 6-char base32 hash (PG) or a numeric counter (Dolt). The regex
-// anchors on the static `bd-parity-` prefix so generic words like
-// `create-parent` are NOT touched.
-var idPattern = regexp.MustCompile(`bd-parity-\d+-[a-zA-Z0-9]+`)
-
-// timestampPattern normalizes RFC3339 timestamps in JSON output.
-var timestampPattern = regexp.MustCompile(`"\w+_at"\s*:\s*"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})"`)
-
-// uuidPattern normalizes random project IDs / clone IDs.
-var uuidPattern = regexp.MustCompile(`\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b`)
-
-// pathPattern normalizes per-test directory paths (always under /tmp).
-var pathPattern = regexp.MustCompile(`/tmp/[a-zA-Z0-9._-]+`)
 
 // goldenFile names the path to the committed reference output, relative
 // to this test package's directory (testdata/ co-located with the test).
@@ -235,155 +215,4 @@ func interpolate(args []string, state *scenarioState) []string {
 		out[i] = a
 	}
 	return out
-}
-
-// extractIDFromJSON pulls the "id" field from a bd JSON response. Handles
-// both single-object responses ({"id": ...}) and the bd create batch shape.
-func extractIDFromJSON(stdout string) (string, error) {
-	stdout = strings.TrimSpace(stdout)
-	if stdout == "" {
-		return "", fmt.Errorf("empty stdout")
-	}
-	var single struct {
-		ID string `json:"id"`
-	}
-	if err := json.Unmarshal([]byte(stdout), &single); err == nil && single.ID != "" {
-		return single.ID, nil
-	}
-	// Some bd commands return arrays; take the first id.
-	var arr []struct {
-		ID string `json:"id"`
-	}
-	if err := json.Unmarshal([]byte(stdout), &arr); err == nil && len(arr) > 0 && arr[0].ID != "" {
-		return arr[0].ID, nil
-	}
-	return "", fmt.Errorf("no id in JSON: %s", truncate(stdout, 200))
-}
-
-// runBDEnv invokes bd with args + caller-supplied env additions. The
-// environment scrubs BEADS_DIR (so subprocess uses the supplied dir) and
-// every identity-bearing var so the parity golden stays byte-identical
-// across rigs/CI/dev. extraEnv (set by runParityScenario) replaces the
-// scrubbed identity vars with deterministic values.
-func runBDEnv(bd, dir string, extraEnv, args []string) (string, string, error) {
-	cmd := exec.Command(bd, args...)
-	cmd.Dir = dir
-	scrub := []string{
-		"BEADS_DIR",
-		"BEADS_ACTOR",
-		"BD_ACTOR",
-		"GIT_AUTHOR_EMAIL",
-		"GIT_AUTHOR_NAME",
-		"GIT_COMMITTER_EMAIL",
-		"GIT_COMMITTER_NAME",
-		"USER",
-		"LOGNAME",
-		"EMAIL",
-	}
-	cmd.Env = append(filterEnv(os.Environ(), scrub...), extraEnv...)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	return stdout.String(), stderr.String(), err
-}
-
-// extractPasswordFromDSN returns the password component of a postgres URI
-// or keyword DSN, or "" if absent. Used to thread BEADS_POSTGRES_PASSWORD
-// to subprocess invocations after init has stripped the credential from
-// metadata.json. Delegates to pgconn.ParseConfig so URL-decoding and the
-// full DSN syntax (including keyword forms with quoted values) are handled
-// correctly.
-func extractPasswordFromDSN(rawDSN string) string {
-	cfg, err := pgconn.ParseConfig(rawDSN)
-	if err != nil {
-		return ""
-	}
-	return cfg.Password
-}
-
-// normalizeOutput applies the documented normalization passes so byte
-// comparisons across backends are stable. The passes preserve all
-// surrounding text, only rewriting volatile substrings.
-func normalizeOutput(raw string) string {
-	out := raw
-	out = uuidPattern.ReplaceAllString(out, "<UUID>")
-	out = timestampPattern.ReplaceAllStringFunc(out, func(match string) string {
-		// Keep the field name, replace the value.
-		i := strings.Index(match, ":")
-		if i < 0 {
-			return match
-		}
-		return match[:i+1] + ` "<TIMESTAMP>"`
-	})
-	out = pathPattern.ReplaceAllString(out, "<TMPPATH>")
-	out = idPattern.ReplaceAllString(out, "<ID>")
-	return out
-}
-
-func filterEnv(env []string, drop ...string) []string {
-	out := make([]string, 0, len(env))
-outer:
-	for _, kv := range env {
-		for _, key := range drop {
-			if strings.HasPrefix(kv, key+"=") {
-				continue outer
-			}
-		}
-		out = append(out, kv)
-	}
-	return out
-}
-
-func isolatedTempDir(t *testing.T) string {
-	t.Helper()
-	dir, err := os.MkdirTemp("/tmp", "bd-parity-")
-	if err != nil {
-		t.Fatalf("isolatedTempDir: %v", err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	return dir
-}
-
-func buildBD(t *testing.T) string {
-	t.Helper()
-	root := repoRoot(t)
-	bd := filepath.Join(root, "bd")
-	if info, err := os.Stat(bd); err == nil && info.Size() > 0 {
-		return bd
-	}
-	cmd := exec.Command("go", "build", "-tags", "gms_pure_go", "-o", bd, "./cmd/bd/")
-	cmd.Dir = root
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("build bd: %v\n%s", err, out)
-	}
-	return bd
-}
-
-func repoRoot(t *testing.T) string {
-	t.Helper()
-	// Walk up from the test file's package directory until we find go.mod.
-	dir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	for dir != "/" {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
-	}
-	t.Fatalf("could not locate go.mod above %s", dir)
-	return ""
-}
-
-func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n] + "...<truncated>"
 }
