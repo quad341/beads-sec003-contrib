@@ -121,11 +121,12 @@ func (s *PostgresStore) PromoteFromEphemeral(ctx context.Context, id, actor stri
 		return err
 	}
 
-	// Step 8: copy comments under a savepoint.
+	// Step 8: copy comments preserving the original UUID so ORDER BY id is stable.
 	if err := copyAuxUnderSavepoint(ctx, tx, id, "promote_comments", `
-		INSERT INTO comments (issue_id, author, text, created_at)
-		SELECT issue_id, author, text, created_at
+		INSERT INTO comments (id, issue_id, author, text, created_at)
+		SELECT id, issue_id, author, text, created_at
 		FROM wisp_comments WHERE issue_id = $1
+		ON CONFLICT (id) DO NOTHING
 	`, "comments"); err != nil {
 		return err
 	}

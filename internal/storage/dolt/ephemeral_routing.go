@@ -247,10 +247,10 @@ func (s *DoltStore) PromoteFromEphemeral(ctx context.Context, id string, actor s
 		log.Printf("promote %s: failed to copy events (data may be lost): %v", id, err)
 	}
 
-	// Copy comments via INSERT...SELECT (best-effort: log but don't fail promotion)
+	// Copy comments preserving the original UUID so ORDER BY id is stable.
 	if _, err := s.execContext(ctx, `
-		INSERT IGNORE INTO comments (issue_id, author, text, created_at)
-		SELECT issue_id, author, text, created_at
+		INSERT IGNORE INTO comments (id, issue_id, author, text, created_at)
+		SELECT id, issue_id, author, text, created_at
 		FROM wisp_comments WHERE issue_id = ?
 	`, id); err != nil {
 		log.Printf("promote %s: failed to copy comments (data may be lost): %v", id, err)

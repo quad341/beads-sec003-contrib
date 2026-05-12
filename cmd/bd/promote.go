@@ -62,13 +62,13 @@ Examples:
 			FatalErrorRespectJSON("promoting %s: %v", fullID, err)
 		}
 
-		// Add promotion comment (issue is now in permanent table, AddComment routes correctly
-		// via GetIssue fallback)
+		// Add promotion comment to the permanent comments table so it is
+		// visible in bd show --thread and bd export on all backends.
 		comment := "Promoted from wisp to permanent bead"
 		if reason != "" {
 			comment += ": " + reason
 		}
-		if err := mustAnnot(store).AddComment(ctx, fullID, actor, comment); err != nil {
+		if _, err := store.AddIssueComment(ctx, fullID, actor, comment); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to add promotion comment to %s: %v\n", fullID, err)
 		}
 
