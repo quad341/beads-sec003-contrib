@@ -26,6 +26,9 @@ var initialUpSQL string
 //go:embed migrations/0002_drop_child_counters_fk.up.sql
 var dropChildCountersFKSQL string
 
+//go:embed migrations/0004_rename_friendly_fks.up.sql
+var renameFriendlyFKsSQL string
+
 // embeddedMigration carries a versioned migration step. Either Body (raw SQL)
 // or Apply (Go func with a tx) is set; runMigrations prefers Apply when both
 // are set, though in practice each migration uses exactly one.
@@ -39,6 +42,7 @@ var embeddedMigrations = []embeddedMigration{
 	{Version: 1, Body: initialUpSQL},
 	{Version: 2, Body: dropChildCountersFKSQL},
 	{Version: 3, Apply: backfillCustomTablesV3},
+	{Version: 4, Body: renameFriendlyFKsSQL},
 }
 
 // runMigrations brings the database schema up to the latest embedded version.

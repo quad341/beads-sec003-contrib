@@ -15,11 +15,8 @@ import (
 
 // --- BulkIssueStore (most landed in claim.go / idgen.go / issues.go;
 //     DeleteIssues landed in delete.go;
-//     DeleteIssuesBySourceRepo landed in delete_by_source_repo.go) ---
-
-func (s *PostgresStore) UpdateIssueID(ctx context.Context, oldID, newID string, issue *types.Issue, actor string) error {
-	return notImplemented("UpdateIssueID")
-}
+//     DeleteIssuesBySourceRepo landed in delete_by_source_repo.go;
+//     UpdateIssueID landed in rename.go) ---
 
 func (s *PostgresStore) PromoteFromEphemeral(ctx context.Context, id, actor string) error {
 	return notImplemented("PromoteFromEphemeral")

@@ -18,7 +18,12 @@ func resetForMigrationV3Test(t *testing.T, store *PostgresStore, typesValue, sta
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	if _, err := store.pool.Exec(ctx, "DELETE FROM bd_schema_migrations WHERE version = 3"); err != nil {
+	// Delete every migration row at or above v3 so the runner re-applies v3
+	// on the next pass. The loop in runMigrations skips any migration whose
+	// version <= current, so leaving v4+ bookkeeping in place would prevent
+	// v3 from re-running. v4 is idempotent (DROP/ADD CONSTRAINT IF EXISTS),
+	// so re-applying it alongside v3 is harmless.
+	if _, err := store.pool.Exec(ctx, "DELETE FROM bd_schema_migrations WHERE version >= 3"); err != nil {
 		t.Fatalf("delete migrations row: %v", err)
 	}
 	if _, err := store.pool.Exec(ctx, "DELETE FROM custom_types"); err != nil {
