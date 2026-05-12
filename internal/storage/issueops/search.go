@@ -75,9 +75,16 @@ func searchTableInTx(ctx context.Context, tx *sql.Tx, query string, filter types
 		limitSQL = fmt.Sprintf(" LIMIT %d", filter.Limit)
 	}
 
+	selectCols := IssueSelectColumns
+	scanFn := ScanIssueFrom
+	if filter.Lite {
+		selectCols = IssueSelectColumnsLite
+		scanFn = ScanIssueLiteFrom
+	}
+
 	//nolint:gosec // G201: whereSQL contains column comparisons with ?, limitSQL is a safe integer
 	querySQL := fmt.Sprintf(`SELECT %s FROM %s %s ORDER BY priority ASC, created_at DESC, id ASC %s`,
-		IssueSelectColumns, tables.Main, whereSQL, limitSQL)
+		selectCols, tables.Main, whereSQL, limitSQL)
 
 	rows, err := tx.QueryContext(ctx, querySQL, args...)
 	if err != nil {
@@ -87,7 +94,7 @@ func searchTableInTx(ctx context.Context, tx *sql.Tx, query string, filter types
 	var issues []*types.Issue
 	seen := make(map[string]bool)
 	for rows.Next() {
-		issue, scanErr := ScanIssueFrom(rows)
+		issue, scanErr := scanFn(rows)
 		if scanErr != nil {
 			_ = rows.Close()
 			return nil, fmt.Errorf("search %s: scan: %w", tables.Main, scanErr)
