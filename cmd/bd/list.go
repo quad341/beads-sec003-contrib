@@ -461,6 +461,9 @@ var listCmd = &cobra.Command{
 		// Ready filter (bd-ihu31)
 		readyFlag, _ := cmd.Flags().GetBool("ready")
 
+		// Full payload flag: restores heavy text fields in --json output.
+		fullFlag, _ := cmd.Flags().GetBool("full")
+
 		// Watch mode implies pretty format
 		if watchMode {
 			prettyFormat = true
@@ -523,6 +526,9 @@ var listCmd = &cobra.Command{
 
 		filter := types.IssueFilter{
 			Limit: sqlLimit,
+			// Default lite SELECT for --json to omit heavy text columns.
+			// --full or non-JSON mode stays on the full path.
+			Lite: jsonOutput && !fullFlag,
 		}
 
 		// --ready flag: show only open issues (excludes hooked/in_progress/blocked/deferred) (bd-ihu31)
@@ -997,8 +1003,12 @@ var listCmd = &cobra.Command{
 						break
 					}
 				}
+				outIssue := issue
+				if !fullFlag {
+					outIssue = shallowIssueForListJSON(issue)
+				}
 				issuesWithCounts[i] = &types.IssueWithCounts{
-					Issue:           issue,
+					Issue:           outIssue,
 					DependencyCount: counts.DependencyCount,
 					DependentCount:  counts.DependentCount,
 					CommentCount:    commentCounts[issue.ID],
@@ -1163,5 +1173,6 @@ func init() {
 	listCmd.Flags().Bool("ready", false, "Show only ready issues (no active blockers, same semantics as bd ready)")
 
 	// Note: --json flag is defined as a persistent flag in main.go, not here
+	listCmd.Flags().Bool("full", false, "Include heavy text fields (description, design, notes,\nacceptance_criteria) in --json output. By default, --json returns a\nlite payload optimized for routing and listing. Use 'bd show <id>'\nfor a single issue's full body, or '--full' to dump the full payload\nacross all rows.")
 	rootCmd.AddCommand(listCmd)
 }

@@ -86,9 +86,12 @@ Examples:
 			FatalError("no database connection")
 		}
 
+		fullFlag, _ := cmd.Flags().GetBool("full")
+		liteMode := jsonOutput && !fullFlag
+
 		// Handle --all flag: show graph for all open issues
 		if graphAll {
-			subgraphs, err := loadAllGraphSubgraphs(ctx, store)
+			subgraphs, err := loadAllGraphSubgraphs(ctx, store, liteMode)
 			if err != nil {
 				FatalError("loading all issues: %v", err)
 			}
@@ -246,6 +249,7 @@ func init() {
 	graphCmd.Flags().BoolVar(&graphBox, "box", false, "ASCII boxes showing layers")
 	graphCmd.Flags().BoolVar(&graphDOT, "dot", false, "Output Graphviz DOT format (pipe to: dot -Tsvg > graph.svg)")
 	graphCmd.Flags().BoolVar(&graphHTML, "html", false, "Output self-contained interactive HTML (redirect to file)")
+	graphCmd.Flags().Bool("full", false, "Include heavy text fields (description, design, notes,\nacceptance_criteria) in --json output. By default, --json returns a\nlite payload. Use 'bd show <id>' for a single issue's full body.")
 	graphCmd.ValidArgsFunction = issueIDCompletion
 	rootCmd.AddCommand(graphCmd)
 	graphCmd.AddCommand(graphCheckCmd)
@@ -354,7 +358,7 @@ func loadGraphSubgraph(ctx context.Context, s storage.Storage, issueID string) (
 
 // loadAllGraphSubgraphs loads all open issues and groups them by connected component
 // Each component is a subgraph of issues that share dependencies
-func loadAllGraphSubgraphs(ctx context.Context, s storage.Storage) ([]*TemplateSubgraph, error) {
+func loadAllGraphSubgraphs(ctx context.Context, s storage.Storage, liteMode bool) ([]*TemplateSubgraph, error) {
 	if s == nil {
 		return nil, fmt.Errorf("no database connection")
 	}
@@ -366,6 +370,7 @@ func loadAllGraphSubgraphs(ctx context.Context, s storage.Storage) ([]*TemplateS
 		statusCopy := status
 		issues, err := s.SearchIssues(ctx, "", types.IssueFilter{
 			Status: &statusCopy,
+			Lite:   liteMode,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to search issues: %w", err)

@@ -1430,6 +1430,7 @@ func init() {
 	depTreeCmd.Flags().String("direction", "", "Tree direction: 'down' (dependencies), 'up' (dependents), or 'both'")
 	depTreeCmd.Flags().String("status", "", "Filter to only show issues with this status (open, in_progress, blocked, deferred, closed)")
 	depTreeCmd.Flags().String("format", "", "Output format: 'mermaid' for Mermaid.js flowchart")
+	depTreeCmd.Flags().Bool("full", false, "Include heavy text fields (description, design, notes,\nacceptance_criteria) in --json output. By default, --json returns a\nlite payload. Use 'bd show <id>' for a single issue's full body.")
 	// Note: --type flag intentionally omitted from depTreeCmd — TreeNode lacks
 	// dependency type info so filtering is not possible. Use 'bd dep list --type' instead.
 
