@@ -94,8 +94,8 @@ func TestRunPostgresHealthChecks_RealServer(t *testing.T) {
 	repo := initPGFixture(t)
 
 	checks := RunPostgresHealthChecks(repo)
-	if len(checks) != 6 {
-		t.Fatalf("expected 6 checks, got %d", len(checks))
+	if len(checks) != 7 {
+		t.Fatalf("expected 7 checks, got %d", len(checks))
 	}
 
 	wantNames := []string{
@@ -105,6 +105,7 @@ func TestRunPostgresHealthChecks_RealServer(t *testing.T) {
 		"Postgres Activity",
 		"Repo Fingerprint",
 		"Referential Integrity",
+		"Dependency Cycles",
 	}
 	for i, name := range wantNames {
 		if checks[i].Name != name {
@@ -144,6 +145,11 @@ func TestRunPostgresHealthChecks_RealServer(t *testing.T) {
 	if !strings.Contains(checks[5].Message, "All cross-table references resolve") {
 		t.Errorf("integrity Message = %q, want 'All cross-table references resolve' on clean DB", checks[5].Message)
 	}
+
+	// Dependency Cycles on a fresh DB has no edges to walk.
+	if !strings.Contains(checks[6].Message, "No circular dependencies detected") {
+		t.Errorf("cycles Message = %q, want 'No circular dependencies detected' on clean DB", checks[6].Message)
+	}
 }
 
 // initPGFixtureGitRepo is initPGFixture + git init of the returned repo so
@@ -169,8 +175,8 @@ func TestCheckPGRepoFingerprint_SeedThenVerify(t *testing.T) {
 
 	// First run: fresh DB (no marker yet) → expect Seeded.
 	first := RunPostgresHealthChecks(repo)
-	if len(first) != 6 {
-		t.Fatalf("expected 6 checks, got %d", len(first))
+	if len(first) != 7 {
+		t.Fatalf("expected 7 checks, got %d", len(first))
 	}
 	fp := first[4]
 	if fp.Name != "Repo Fingerprint" {
@@ -274,7 +280,7 @@ func TestRunPostgresHealthChecks_AuthFailure(t *testing.T) {
 		t.Errorf("connection Detail = %q, want substring 'authentication'", checks[0].Detail)
 	}
 	// Downstream checks should be marked skipped.
-	for i := 1; i < 6; i++ {
+	for i := 1; i < 7; i++ {
 		if checks[i].Status != StatusError {
 			t.Errorf("checks[%d] (%s) Status = %s, want StatusError when connection fails", i, checks[i].Name, checks[i].Status)
 		}
@@ -388,5 +394,148 @@ func TestCheckPGReferentialIntegrity_OrphanInMultipleWispTables(t *testing.T) {
 		if !strings.Contains(ri.Detail, label) {
 			t.Errorf("Detail = %q, want it to name %s", ri.Detail, label)
 		}
+	}
+}
+
+// seedCycleIssue inserts a minimal issues row so the dependencies FK on
+// issue_id is satisfied. Cycle-detection tests need real parent rows for
+// every node in the graph — the depends_on_id column has no FK, but
+// issue_id does (see internal/storage/postgres/migrations/0001_initial.up.sql).
+func seedCycleIssue(t *testing.T, conn *pgConn, id string) {
+	t.Helper()
+	ctx := context.Background()
+	if _, err := conn.pool.Exec(ctx,
+		`INSERT INTO issues (id, title, description, design, acceptance_criteria, notes,
+		                     status, priority, issue_type, owner)
+		 VALUES ($1, $2, '', '', '', '', 'open', 2, 'task', 'tester')`,
+		id, id+" node",
+	); err != nil {
+		t.Fatalf("seed cycle node %s: %v", id, err)
+	}
+}
+
+func TestCheckPGDependencyCycles_Clean(t *testing.T) {
+	repo := initPGFixture(t)
+
+	checks := RunPostgresHealthChecks(repo)
+	dc := checks[6]
+	if dc.Name != "Dependency Cycles" {
+		t.Fatalf("checks[6].Name = %q, want \"Dependency Cycles\"", dc.Name)
+	}
+	if dc.Status != StatusOK {
+		t.Fatalf("Status = %q, want StatusOK on fresh DB; Message=%q Detail=%q", dc.Status, dc.Message, dc.Detail)
+	}
+	if !strings.Contains(dc.Message, "No circular dependencies detected") {
+		t.Errorf("Message = %q, want clean-DB phrasing", dc.Message)
+	}
+}
+
+func TestCheckPGDependencyCycles_TwoNodeCycle(t *testing.T) {
+	repo := initPGFixture(t)
+	beadsDir := filepath.Join(repo, ".beads")
+
+	conn, err := openPGConn(beadsDir)
+	if err != nil {
+		t.Fatalf("openPGConn: %v", err)
+	}
+	defer conn.Close()
+	ctx := context.Background()
+
+	seedCycleIssue(t, conn, "bd-cyclea")
+	seedCycleIssue(t, conn, "bd-cycleb")
+
+	// bd-cyclea → bd-cycleb → bd-cyclea
+	if _, err := conn.pool.Exec(ctx,
+		`INSERT INTO dependencies (issue_id, depends_on_id, type) VALUES
+		   ('bd-cyclea', 'bd-cycleb', 'blocks'),
+		   ('bd-cycleb', 'bd-cyclea', 'blocks')`,
+	); err != nil {
+		t.Fatalf("insert 2-node cycle: %v", err)
+	}
+
+	checks := RunPostgresHealthChecks(repo)
+	dc := checks[6]
+	if dc.Status != StatusError {
+		t.Fatalf("Status = %q, want StatusError when cycle present; Message=%q Detail=%q", dc.Status, dc.Message, dc.Detail)
+	}
+	if !strings.Contains(dc.Message, "circular dependency cycle") {
+		t.Errorf("Message = %q, want substring \"circular dependency cycle\"", dc.Message)
+	}
+	// Sample path must surface both nodes and close back on the start.
+	if !strings.Contains(dc.Detail, "bd-cyclea") || !strings.Contains(dc.Detail, "bd-cycleb") {
+		t.Errorf("Detail = %q, want it to name both cycle members", dc.Detail)
+	}
+	if !strings.Contains(dc.Detail, "→") {
+		t.Errorf("Detail = %q, want it to render the cycle path with arrows", dc.Detail)
+	}
+	if dc.Fix == "" {
+		t.Errorf("Fix is empty; want actionable remediation hint")
+	}
+}
+
+func TestCheckPGDependencyCycles_ThreeNodeCycle(t *testing.T) {
+	repo := initPGFixture(t)
+	beadsDir := filepath.Join(repo, ".beads")
+
+	conn, err := openPGConn(beadsDir)
+	if err != nil {
+		t.Fatalf("openPGConn: %v", err)
+	}
+	defer conn.Close()
+	ctx := context.Background()
+
+	seedCycleIssue(t, conn, "bd-tria")
+	seedCycleIssue(t, conn, "bd-trib")
+	seedCycleIssue(t, conn, "bd-tric")
+
+	// bd-tria → bd-trib → bd-tric → bd-tria
+	if _, err := conn.pool.Exec(ctx,
+		`INSERT INTO dependencies (issue_id, depends_on_id, type) VALUES
+		   ('bd-tria', 'bd-trib', 'blocks'),
+		   ('bd-trib', 'bd-tric', 'blocks'),
+		   ('bd-tric', 'bd-tria', 'blocks')`,
+	); err != nil {
+		t.Fatalf("insert 3-node cycle: %v", err)
+	}
+
+	checks := RunPostgresHealthChecks(repo)
+	dc := checks[6]
+	if dc.Status != StatusError {
+		t.Fatalf("Status = %q, want StatusError when cycle present; Message=%q Detail=%q", dc.Status, dc.Message, dc.Detail)
+	}
+	for _, id := range []string{"bd-tria", "bd-trib", "bd-tric"} {
+		if !strings.Contains(dc.Detail, id) {
+			t.Errorf("Detail = %q, want it to name cycle member %q", dc.Detail, id)
+		}
+	}
+}
+
+func TestCheckPGDependencyCycles_NoCycleOnLinearChain(t *testing.T) {
+	repo := initPGFixture(t)
+	beadsDir := filepath.Join(repo, ".beads")
+
+	conn, err := openPGConn(beadsDir)
+	if err != nil {
+		t.Fatalf("openPGConn: %v", err)
+	}
+	defer conn.Close()
+	ctx := context.Background()
+
+	// A → B → C with no back-edge: classic DAG, must NOT be flagged.
+	seedCycleIssue(t, conn, "bd-lina")
+	seedCycleIssue(t, conn, "bd-linb")
+	seedCycleIssue(t, conn, "bd-linc")
+	if _, err := conn.pool.Exec(ctx,
+		`INSERT INTO dependencies (issue_id, depends_on_id, type) VALUES
+		   ('bd-lina', 'bd-linb', 'blocks'),
+		   ('bd-linb', 'bd-linc', 'blocks')`,
+	); err != nil {
+		t.Fatalf("insert linear chain: %v", err)
+	}
+
+	checks := RunPostgresHealthChecks(repo)
+	dc := checks[6]
+	if dc.Status != StatusOK {
+		t.Fatalf("Status = %q, want StatusOK on DAG; Message=%q Detail=%q", dc.Status, dc.Message, dc.Detail)
 	}
 }

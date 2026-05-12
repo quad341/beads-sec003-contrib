@@ -188,6 +188,7 @@ func RunPostgresHealthChecks(path string) []DoctorCheck {
 			{Name: "Postgres Activity", Status: StatusOK, Message: na, Category: CategoryData},
 			{Name: "Repo Fingerprint", Status: StatusOK, Message: na, Category: CategoryCore},
 			{Name: "Referential Integrity", Status: StatusOK, Message: na, Category: CategoryCore},
+			{Name: "Dependency Cycles", Status: StatusOK, Message: na, Category: CategoryCore},
 		}
 	}
 
@@ -209,6 +210,7 @@ func RunPostgresHealthChecks(path string) []DoctorCheck {
 			{Name: "Postgres Activity", Status: StatusError, Message: "Skipped (no connection)", Detail: failMsg, Category: CategoryData},
 			{Name: "Repo Fingerprint", Status: StatusError, Message: "Skipped (no connection)", Detail: failMsg, Category: CategoryCore},
 			{Name: "Referential Integrity", Status: StatusError, Message: "Skipped (no connection)", Detail: failMsg, Category: CategoryCore},
+			{Name: "Dependency Cycles", Status: StatusError, Message: "Skipped (no connection)", Detail: failMsg, Category: CategoryCore},
 		}
 	}
 	defer conn.Close()
@@ -220,6 +222,7 @@ func RunPostgresHealthChecks(path string) []DoctorCheck {
 		checkPGRecentActivity(conn),
 		checkPGRepoFingerprint(conn, path),
 		checkPGReferentialIntegrity(conn),
+		checkPGDependencyCycles(conn),
 	}
 }
 
@@ -663,6 +666,133 @@ func checkPGReferentialIntegrity(conn *pgConn) DoctorCheck {
 		Detail:  detail.String(),
 		Fix: "Investigate root cause; orphans suggest a partial delete, an interrupted import, " +
 			"or schema drift. Audit log (events / wisp_events) may show the operation that left the orphan behind.",
+		Category: CategoryCore,
+	}
+}
+
+// pgCycleDetectQuery is a PG-flavored recursive CTE that walks the
+// dependencies graph and surfaces any edge that closes back on its
+// own start node. Conceptually mirrors the Dolt-side algorithm in
+// integrity.go (CheckDependencyCyclesWithStore) but uses PG's `||`
+// for string concat and an explicit ::TEXT cast so the recursive
+// term's column types unify cleanly with the non-recursive term's.
+//
+// The `path NOT LIKE '%→X→%'` predicate (note the leading →) prunes
+// paths that would revisit an *intermediate* node — a node already in
+// the path with both an inbound and outbound edge — while still
+// permitting closure back to the start (which has no inbound → in
+// the path). The Dolt-side variant uses `%X→%` (no leading →) which
+// over-broadly blocks closure to the start; the discrepancy with the
+// Dolt implementation is noted as a separate follow-up bead.
+//
+// The outer `LIMIT 10` caps the sample size — doctor surfaces a
+// diagnostic, not an exhaustive cycle inventory.
+const pgCycleDetectQuery = `
+WITH RECURSIVE paths(issue_id, depends_on_id, start_id, path, depth) AS (
+    SELECT
+        issue_id,
+        depends_on_id,
+        issue_id,
+        (issue_id || '→' || depends_on_id)::TEXT,
+        0
+    FROM dependencies
+
+    UNION ALL
+
+    SELECT
+        d.issue_id,
+        d.depends_on_id,
+        p.start_id,
+        (p.path || '→' || d.depends_on_id)::TEXT,
+        p.depth + 1
+    FROM dependencies d
+    JOIN paths p ON d.issue_id = p.depends_on_id
+    WHERE p.depth < 100
+      AND p.depends_on_id <> p.start_id
+      AND p.path NOT LIKE '%→' || d.depends_on_id || '→%'
+)
+SELECT DISTINCT start_id, path
+FROM paths
+WHERE depends_on_id = start_id
+LIMIT 10
+`
+
+// checkPGDependencyCycles scans the `dependencies` table for circular
+// blocks-chains. The Dolt-side check (CheckDependencyCyclesWithStore in
+// integrity.go) ran only via the shared *DoltStore handle and short-
+// circuited to a no-op on PG; this is the ship-gate parity gap from
+// be-4i7ax3 §4 D-9. Cycle detection feeds bd ready — an undetected
+// cycle hides every issue in the loop from the work queue.
+func checkPGDependencyCycles(conn *pgConn) DoctorCheck {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	rows, err := conn.pool.Query(ctx, pgCycleDetectQuery)
+	if err != nil {
+		return DoctorCheck{
+			Name:     "Dependency Cycles",
+			Status:   StatusWarning,
+			Message:  "Unable to check for cycles",
+			Detail:   err.Error(),
+			Category: CategoryCore,
+		}
+	}
+	defer rows.Close()
+
+	type cycleSample struct {
+		startID string
+		path    string
+	}
+	var samples []cycleSample
+	for rows.Next() {
+		var s cycleSample
+		if err := rows.Scan(&s.startID, &s.path); err != nil {
+			return DoctorCheck{
+				Name:     "Dependency Cycles",
+				Status:   StatusWarning,
+				Message:  "Row scan error",
+				Detail:   err.Error(),
+				Category: CategoryCore,
+			}
+		}
+		samples = append(samples, s)
+	}
+	if err := rows.Err(); err != nil {
+		return DoctorCheck{
+			Name:     "Dependency Cycles",
+			Status:   StatusWarning,
+			Message:  "Row iteration error",
+			Detail:   err.Error(),
+			Category: CategoryCore,
+		}
+	}
+
+	if len(samples) == 0 {
+		return DoctorCheck{
+			Name:     "Dependency Cycles",
+			Status:   StatusOK,
+			Message:  "No circular dependencies detected",
+			Category: CategoryCore,
+		}
+	}
+
+	// First sample is the headline; remaining samples (if any) join the
+	// detail for context. LIMIT 10 caps the slice size.
+	var detail strings.Builder
+	fmt.Fprintf(&detail, "First cycle: %s", samples[0].path)
+	if len(samples) > 1 {
+		fmt.Fprintf(&detail, "\nAdditional cycles (%d):", len(samples)-1)
+		for _, s := range samples[1:] {
+			fmt.Fprintf(&detail, "\n  %s", s.path)
+		}
+	}
+
+	return DoctorCheck{
+		Name:     "Dependency Cycles",
+		Status:   StatusError,
+		Message:  fmt.Sprintf("Found %d circular dependency cycle(s)", len(samples)),
+		Detail:   detail.String(),
+		Fix:      "Run 'bd dep cycles' to see full cycle paths, then 'bd dep remove' to break cycles",
 		Category: CategoryCore,
 	}
 }
