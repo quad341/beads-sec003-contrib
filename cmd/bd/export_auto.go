@@ -142,8 +142,13 @@ func exportToFile(ctx context.Context, path string, includeMemories bool) (issue
 		}
 	}()
 
-	// Build filter: exclude infra types and templates
-	filter := types.IssueFilter{Limit: 0}
+	// Build filter: exclude infra types and templates. Opt out of
+	// BEADS_MAX_ROWS (designer §4.1) — auto-export is a data-integrity sweep.
+	filter := types.IssueFilter{
+		Limit:         0,
+		MaxRows:       0,
+		MaxRowsSource: "",
+	}
 	var infraTypes []string
 	if store != nil {
 		infraSet := store.GetInfraTypes(ctx)
