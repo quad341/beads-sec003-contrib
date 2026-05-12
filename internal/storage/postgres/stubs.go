@@ -16,11 +16,8 @@ import (
 // --- BulkIssueStore (most landed in claim.go / idgen.go / issues.go;
 //     DeleteIssues landed in delete.go;
 //     DeleteIssuesBySourceRepo landed in delete_by_source_repo.go;
-//     UpdateIssueID landed in rename.go) ---
-
-func (s *PostgresStore) PromoteFromEphemeral(ctx context.Context, id, actor string) error {
-	return notImplemented("PromoteFromEphemeral")
-}
+//     UpdateIssueID landed in rename.go;
+//     PromoteFromEphemeral landed in promote.go) ---
 
 // --- MergeSlot (Storage) ---
 
