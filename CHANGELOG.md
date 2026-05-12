@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`bd ready --json` now omits `description`/`design`/`notes`/`acceptance_criteria` by default.** Pass `--full` to restore the full payload. `--claim` always returns the full payload regardless of `--full`. `WorkFilter.Lite` field added as a future SQL-layer hook. (be-uwvs.3)
 - **`bd list --json` (and `bd dep tree --json`, `bd graph --json`) now omit `description`/`design`/`notes`/`acceptance_criteria` by default.** Pass `--full` to restore the previous full payload. Single-record reads via `bd show <id>` are unaffected. (be-uwvs.2)
 - **`bd init --force` semantics narrowed to local-only** — `--force` (or `--reinit-local`) bypasses only the LOCAL data-safety guard. It does NOT authorize silent divergence of remote history. When origin has `refs/dolt/data`, `bd init --force` now refuses with exit code 10 unless `--discard-remote` is also passed. Fixes the long-standing footgun where `bd init --force` in a repo with remote Dolt history silently set up an orphan branch that failed to push.
 - **Init refusal messages follow What/Why/Next structure** — runtime error text no longer echoes copy-pasteable destructive invocations. Token values and exact override commands live in `bd help init-safety` and `docs/RECOVERY.md` only. Closes the failure class where an AI agent destroyed 247 issues by pattern-matching on the tool's own error output (`58f5989bf`).

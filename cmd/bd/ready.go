@@ -83,6 +83,7 @@ This is useful for agents executing molecules to see which steps can run next.`,
 		plainFormat, _ := cmd.Flags().GetBool("plain")
 		includeDeferred, _ := cmd.Flags().GetBool("include-deferred")
 		includeEphemeral, _ := cmd.Flags().GetBool("include-ephemeral")
+		fullFlag, _ := cmd.Flags().GetBool("full")
 		excludeTypeStrs, _ := cmd.Flags().GetStringSlice("exclude-type")
 		var molType *types.MolType
 		if molTypeStr != "" {
@@ -131,6 +132,7 @@ This is useful for agents executing molecules to see which steps can run next.`,
 			IncludeDeferred:  includeDeferred,  // GH#820: respect --include-deferred flag
 			IncludeEphemeral: includeEphemeral, // bd-i5k5x: allow ephemeral issues (e.g., merge-requests)
 			ExcludeTypes:     excludeTypes,
+			Lite:             jsonOutput && !fullFlag, // future hook: SQL-layer routing deferred per be-uwvs §7.1
 		}
 		// Use Changed() to properly handle P0 (priority=0)
 		if cmd.Flags().Changed("priority") {
@@ -236,7 +238,7 @@ This is useful for agents executing molecules to see which steps can run next.`,
 		}
 
 		if jsonOutput {
-			outputJSON(buildReadyIssueOutput(ctx, activeStore, issues))
+			outputJSON(buildReadyIssueOutput(ctx, activeStore, issues, !fullFlag))
 			if truncated {
 				fmt.Fprintf(os.Stderr, "Showing %d of %d ready issues. Use --limit 0 for all, or --limit N to raise the cap.\n", len(issues), totalReady)
 			}
@@ -409,7 +411,8 @@ func displayReadyList(issues []*types.Issue, parentEpicMap map[string]string) {
 	fmt.Println("Status: ○ open  ◐ in_progress  ● blocked  ✓ closed  ❄ deferred")
 }
 
-func buildReadyIssueOutput(ctx context.Context, s storage.Storage, issues []*types.Issue) []*types.IssueWithCounts {
+func buildReadyIssueOutput(ctx context.Context, s storage.Storage, issues []*types.Issue, liteMode ...bool) []*types.IssueWithCounts {
+	lite := len(liteMode) > 0 && liteMode[0]
 	if issues == nil {
 		issues = []*types.Issue{}
 	}
@@ -442,8 +445,12 @@ func buildReadyIssueOutput(ctx context.Context, s storage.Storage, issues []*typ
 				break
 			}
 		}
+		outIssue := issue
+		if lite {
+			outIssue = shallowIssueForListJSON(issue)
+		}
 		issuesWithCounts[i] = &types.IssueWithCounts{
-			Issue:           issue,
+			Issue:           outIssue,
 			DependencyCount: counts.DependencyCount,
 			DependentCount:  counts.DependentCount,
 			CommentCount:    commentCounts[issue.ID],
@@ -730,6 +737,7 @@ func init() {
 	readyCmd.Flags().StringSlice("exclude-type", nil, "Exclude issue types from results (comma-separated or repeatable, e.g., --exclude-type=convoy,epic)")
 	readyCmd.Flags().Bool("explain", false, "Show dependency-aware reasoning for why issues are ready or blocked")
 	readyCmd.Flags().Bool("claim", false, "Atomically claim the first ready issue matching the filters")
+	readyCmd.Flags().Bool("full", false, "Include heavy text fields in JSON output (description, design, notes, acceptance_criteria). --claim always returns full payload.")
 	// Metadata filtering (GH#1406)
 	readyCmd.Flags().StringArray("metadata-field", nil, "Filter by metadata field (key=value, repeatable)")
 	readyCmd.Flags().String("has-metadata-key", "", "Filter issues that have this metadata key set")

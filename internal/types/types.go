@@ -1360,6 +1360,13 @@ type WorkFilter struct {
 	// Metadata field filtering (GH#1406)
 	MetadataFields map[string]string // Top-level key=value equality; AND semantics (all must match)
 	HasMetadataKey string            // Existence check: issue has this top-level key set (non-null)
+
+	// Lite mirrors IssueFilter.Lite: when true, GetReadyWork should omit heavy
+	// TEXT columns (description, design, acceptance_criteria, notes). Currently
+	// a future hook — SQL-layer routing through GetIssuesByIDsInTx is deferred
+	// per be-uwvs designer §7.1 fallback; bd ready --json defaults to shallow
+	// via application-layer stripping instead.
+	Lite bool
 }
 
 // StaleFilter is used to filter stale issue queries
