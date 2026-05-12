@@ -914,6 +914,7 @@ Examples:
 		direction, _ := cmd.Flags().GetString("direction")
 		statusFilter, _ := cmd.Flags().GetString("status")
 		formatStr, _ := cmd.Flags().GetString("format")
+		fullFlag, _ := cmd.Flags().GetBool("full")
 		// Handle --format json: the local --format flag shadows the hidden
 		// persistent --format on rootCmd, so "json" arrives here instead of
 		// setting jsonOutput via PersistentPreRun. Route it explicitly.
@@ -980,6 +981,11 @@ Examples:
 			// Always output array, even if empty
 			if tree == nil {
 				tree = []*types.TreeNode{}
+			}
+			if !fullFlag {
+				for _, node := range tree {
+					node.Issue = *shallowIssueForListJSON(&node.Issue)
+				}
 			}
 			outputJSON(tree)
 			return
