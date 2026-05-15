@@ -55,6 +55,15 @@ type DriverConfig struct {
 	Options map[string]string
 }
 
+// ConnectionConfig is the connection configuration for backend drivers that accept
+// a DSN string (e.g. the Postgres backend). It is separate from DriverConfig because
+// DriverConfig is general-purpose (beads-dir + options map), while ConnectionConfig
+// is the typed form for drivers that need explicit connection parameters.
+type ConnectionConfig struct {
+	// DSN is the backend connection string (e.g. "postgres://user:pass@host/db").
+	DSN string
+}
+
 // DriverOpener is the constructor function registered per backend.
 // It must return a newly constructed Driver in a zero/default state.
 // Open has NOT been called; OpenDriver calls it after construction.
