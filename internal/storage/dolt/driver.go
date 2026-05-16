@@ -68,8 +68,12 @@ func (d *DoltDriver) InitSchema(ctx context.Context) error {
 }
 
 // MigrateSchema runs migrations up to and including targetVersion.
-// It is a no-op when the current schema version is already >= targetVersion.
+// It only supports migrating to the latest schema version; any other
+// targetVersion returns an error.
 func (d *DoltDriver) MigrateSchema(ctx context.Context, targetVersion int) error {
+	if targetVersion != schema.LatestVersion() {
+		return fmt.Errorf("dolt driver: MigrateSchema only supports migrating to latest (%d); got %d", schema.LatestVersion(), targetVersion)
+	}
 	current, err := d.SchemaVersion(ctx)
 	if err != nil {
 		return err
