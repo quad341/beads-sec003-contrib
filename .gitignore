@@ -14,8 +14,7 @@
 # Go workspace file
 go.work
 
-# Go build cache
-pkg/
+# Go build cache (modern Go stores cache in $GOCACHE, not pkg/)
 
 # IDE
 .vscode/
