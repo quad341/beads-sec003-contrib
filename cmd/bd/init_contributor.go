@@ -263,6 +263,64 @@ Created by: bd init --contributor
 	return nil
 }
 
+// autoConfigureForkContributor silently configures contributor routing when bd
+// init detects a fork (upstream remote present) and routing is not yet set.
+// Non-interactive and idempotent: skips if routing.contributor is already set.
+func autoConfigureForkContributor(ctx context.Context, store storage.DoltStorage, quiet bool) error {
+	if existing, err := store.GetConfig(ctx, "routing.contributor"); err == nil && existing != "" {
+		return nil
+	}
+
+	isFork, _ := detectForkSetup()
+	if !isFork {
+		return nil
+	}
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get home directory: %w", err)
+	}
+	planningPath := filepath.Join(homeDir, ".beads-planning")
+
+	if _, err := os.Stat(planningPath); os.IsNotExist(err) {
+		if err := os.MkdirAll(planningPath, 0750); err != nil {
+			return fmt.Errorf("failed to create planning repo: %w", err)
+		}
+		gitInit := exec.Command("git", "init")
+		gitInit.Dir = planningPath
+		if err := gitInit.Run(); err != nil {
+			return fmt.Errorf("failed to init git in planning repo: %w", err)
+		}
+		if err := os.MkdirAll(filepath.Join(planningPath, ".beads"), 0750); err != nil {
+			return fmt.Errorf("failed to create .beads in planning repo: %w", err)
+		}
+	}
+
+	if err := store.SetConfig(ctx, "routing.mode", "auto"); err != nil {
+		return fmt.Errorf("failed to set routing.mode: %w", err)
+	}
+	if err := store.SetConfig(ctx, "routing.contributor", planningPath); err != nil {
+		return fmt.Errorf("failed to set routing.contributor: %w", err)
+	}
+	if err := store.SetConfig(ctx, "sync.remote", "upstream"); err != nil {
+		return fmt.Errorf("failed to set sync.remote: %w", err)
+	}
+
+	_ = exec.Command("git", "config", "beads.role", "contributor").Run()
+
+	if configPath, err := config.FindConfigYAMLPath(); err == nil {
+		if addErr := config.AddRepo(configPath, planningPath); addErr != nil && !strings.Contains(addErr.Error(), "already exists") {
+			// Non-fatal: hydration config failure doesn't block routing setup
+		}
+	}
+
+	if !quiet {
+		fmt.Printf("%s Fork detected — contributor routing configured (planning repo: %s)\n",
+			ui.RenderPass("✓"), planningPath)
+	}
+	return nil
+}
+
 // detectForkSetup checks if we're in a fork by looking for upstream remote
 func detectForkSetup() (isFork bool, upstreamURL string) {
 	cmd := exec.Command("git", "remote", "get-url", "upstream")
