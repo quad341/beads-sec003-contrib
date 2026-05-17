@@ -128,36 +128,50 @@ func isIdentByte(c byte) bool {
 	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'
 }
 
+// getLabelsForTable fetches labels for multiple issue IDs from a single table,
+// returning a map of issueID → []label. Used by both GetLabelsForIssues and
+// SearchIssues to replace per-issue N+1 queries with a single bulk fetch.
+func getLabelsForTable(ctx context.Context, c pgxConn, table string, ids []string) (map[string][]string, error) {
+	out := make(map[string][]string, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	table = guardTable(table)
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
+	ph := joinPlaceholders(1, len(ids))
+	//nolint:gosec // table allowlisted via guardTable
+	q := fmt.Sprintf(`SELECT issue_id, label FROM %s WHERE issue_id IN (%s) ORDER BY issue_id, label`, table, ph)
+	rows, err := c.Query(ctx, q, args...)
+	if err != nil {
+		return nil, wrapErr(fmt.Sprintf("get labels for issues from %s", table), err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, lab string
+		if err := rows.Scan(&id, &lab); err != nil {
+			return nil, wrapErr(fmt.Sprintf("scan labels from %s", table), err)
+		}
+		out[id] = append(out[id], lab)
+	}
+	return out, rows.Err()
+}
+
 // GetLabelsForIssues returns labels for many issues, keyed by issue ID.
 func (s *PostgresStore) GetLabelsForIssues(ctx context.Context, issueIDs []string) (map[string][]string, error) {
 	out := make(map[string][]string, len(issueIDs))
 	if len(issueIDs) == 0 {
 		return out, nil
 	}
-	args := make([]any, len(issueIDs))
-	for i, id := range issueIDs {
-		args[i] = id
-	}
-	ph := joinPlaceholders(1, len(issueIDs))
 	for _, table := range []string{"labels", "wisp_labels"} {
-		//nolint:gosec // table allowlisted
-		q := fmt.Sprintf(`SELECT issue_id, label FROM %s WHERE issue_id IN (%s) ORDER BY issue_id, label`, table, ph)
-		rows, err := s.pool.Query(ctx, q, args...)
+		m, err := getLabelsForTable(ctx, s.pool, table, issueIDs)
 		if err != nil {
-			return nil, wrapErr(fmt.Sprintf("get labels for issues from %s", table), err)
+			return nil, err
 		}
-		if err := func() error {
-			defer rows.Close()
-			for rows.Next() {
-				var id, lab string
-				if err := rows.Scan(&id, &lab); err != nil {
-					return err
-				}
-				out[id] = append(out[id], lab)
-			}
-			return rows.Err()
-		}(); err != nil {
-			return nil, wrapErr("scan labels for issues", err)
+		for id, labs := range m {
+			out[id] = append(out[id], labs...)
 		}
 	}
 	return out, nil
