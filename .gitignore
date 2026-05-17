@@ -14,8 +14,8 @@
 # Go workspace file
 go.work
 
-# Go build cache
-pkg/
+# Go build cache (GOPATH-mode artifact; not produced in modules mode)
+# pkg/ is now tracked source — pkg/serde/ and future public packages live here
 
 # IDE
 .vscode/
