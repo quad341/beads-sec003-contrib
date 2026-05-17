@@ -384,9 +384,11 @@ func resolveDoltSourceDataDir(source string) (string, string, error) {
 	if err != nil {
 		return "", "", fmt.Errorf("read --source metadata.json: %w", err)
 	}
+	// Read database name from source's metadata.json directly (not GetDoltDatabase,
+	// which honors BEADS_DOLT_SERVER_DATABASE and could silently point at the wrong source).
 	database := configfile.DefaultDoltDatabase
-	if cfg != nil {
-		database = cfg.GetDoltDatabase()
+	if cfg != nil && cfg.DoltDatabase != "" {
+		database = cfg.DoltDatabase
 	}
 	for _, candidate := range []string{
 		filepath.Join(abs, "dolt"),
