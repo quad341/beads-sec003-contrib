@@ -263,16 +263,32 @@ Created by: bd init --contributor
 	return nil
 }
 
-// autoConfigureForkContributor silently configures contributor routing when bd
-// init detects a fork (upstream remote present) and routing is not yet set.
-// Non-interactive and idempotent: skips if routing.contributor is already set.
-func autoConfigureForkContributor(ctx context.Context, store storage.DoltStorage, quiet bool) error {
-	if existing, err := store.GetConfig(ctx, "routing.contributor"); err == nil && existing != "" {
+// autoConfigureForkContributor configures contributor routing when bd init
+// detects a fork (upstream remote present) and routing is not yet set.
+// Non-interactive and idempotent. roleFlag is the --role flag value (if any).
+func autoConfigureForkContributor(ctx context.Context, store storage.DoltStorage, quiet bool, roleFlag string) error {
+	isFork, upstreamURL := detectForkSetup()
+	if !isFork {
 		return nil
 	}
 
-	isFork, _ := detectForkSetup()
-	if !isFork {
+	// Explicit --role=maintainer on a fork: acknowledge fork, skip routing.
+	if roleFlag == "maintainer" {
+		if !quiet {
+			fmt.Printf("\n  %s Fork detected (upstream: %s)\n", ui.RenderWarn("⚠"), upstreamURL)
+			fmt.Printf("    Contributor routing skipped (--role=maintainer).\n")
+			fmt.Printf("    To set up contributor routing later: bd init --contributor\n")
+		}
+		return nil
+	}
+
+	// Already configured: idempotent re-init.
+	if existing, err := store.GetConfig(ctx, "routing.contributor"); err == nil && existing != "" {
+		if !quiet {
+			fmt.Printf("\n  %s Fork detected (upstream: %s)\n", ui.RenderWarn("⚠"), upstreamURL)
+			fmt.Printf("    Contributor routing already configured → %s\n", existing)
+			fmt.Printf("    Skipping auto-setup. To reconfigure: bd init --contributor\n")
+		}
 		return nil
 	}
 
@@ -315,8 +331,12 @@ func autoConfigureForkContributor(ctx context.Context, store storage.DoltStorage
 	}
 
 	if !quiet {
-		fmt.Printf("%s Fork detected — contributor routing configured (planning repo: %s)\n",
-			ui.RenderPass("✓"), planningPath)
+		fmt.Printf("\n%s Fork detected — configuring contributor routing\n", ui.RenderAccent("▶"))
+		fmt.Printf("  upstream: %s\n\n", upstreamURL)
+		fmt.Printf("  %s Planning repo: %s\n", ui.RenderPass("✓"), planningPath)
+		fmt.Printf("  %s Issues will route to planning repo (routing.mode=auto)\n", ui.RenderPass("✓"))
+		fmt.Printf("  %s Sync remote set to upstream\n", ui.RenderPass("✓"))
+		fmt.Printf("\n  To use maintainer mode instead: bd init --role=maintainer\n")
 	}
 	return nil
 }
