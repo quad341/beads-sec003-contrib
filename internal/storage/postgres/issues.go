@@ -402,8 +402,18 @@ func (s *PostgresStore) SearchIssues(ctx context.Context, query string, filter t
 	if err != nil {
 		return nil, wrapErr("scan issues", err)
 	}
-	for _, issue := range issues {
-		issue.Labels, _ = getLabelsFromTable(ctx, s.pool, "labels", issue.ID)
+	if len(issues) > 0 {
+		ids := make([]string, len(issues))
+		for i, iss := range issues {
+			ids[i] = iss.ID
+		}
+		labelsByID, err := getLabelsForTable(ctx, s.pool, "labels", ids)
+		if err != nil {
+			return nil, wrapErr("bulk labels for search", err)
+		}
+		for _, iss := range issues {
+			iss.Labels = labelsByID[iss.ID]
+		}
 	}
 	return issues, nil
 }
