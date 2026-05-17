@@ -84,12 +84,12 @@ func (s *DoltStore) GetStatistics(ctx context.Context) (*types.Statistics, error
 
 	// Blocked count: reuse computeBlockedIDs which caches the result across
 	// GetReadyWork and GetStatistics calls within the same CLI invocation.
-	var blockedCount int
+	blockedCount := 0
 	blockedIDs, err := s.computeBlockedIDs(ctx, true)
 	if err == nil {
 		blockedCount = len(blockedIDs)
 	}
-	stats.BlockedIssues = blockedCount
+	stats.BlockedIssues = &blockedCount
 
 	// Ready count: compute without using the ready_issues view to avoid
 	// recursive CTE join that triggers the same Dolt panic.
@@ -99,6 +99,20 @@ func (s *DoltStore) GetStatistics(ctx context.Context) (*types.Statistics, error
 		stats.ReadyIssues = 0
 	}
 
+	return stats, nil
+}
+
+// GetStatisticsNoBlocked returns aggregate counts without the blocked-set traversal.
+// BlockedIssues is nil in the result. Use for bd stats --no-blocked fast path.
+func (s *DoltStore) GetStatisticsNoBlocked(ctx context.Context) (*types.Statistics, error) {
+	stats := &types.Statistics{}
+	err := s.withReadTx(ctx, func(tx *sql.Tx) error {
+		return issueops.ScanIssueCountsInTx(ctx, tx, stats)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get statistics: %w", err)
+	}
+	// BlockedIssues stays nil; ReadyIssues not computable without blocked set.
 	return stats, nil
 }
 

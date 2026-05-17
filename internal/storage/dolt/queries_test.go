@@ -2207,8 +2207,12 @@ func TestGetStatistics_EmptyStore(t *testing.T) {
 	if stats.ClosedIssues != 0 {
 		t.Errorf("expected 0 closed issues, got %d", stats.ClosedIssues)
 	}
-	if stats.BlockedIssues != 0 {
-		t.Errorf("expected 0 blocked issues, got %d", stats.BlockedIssues)
+	if stats.BlockedIssues == nil || *stats.BlockedIssues != 0 {
+		got := 0
+		if stats.BlockedIssues != nil {
+			got = *stats.BlockedIssues
+		}
+		t.Errorf("expected 0 blocked issues, got %d", got)
 	}
 }
 
@@ -2300,8 +2304,12 @@ func TestGetStatistics_BlockedCount(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if stats.BlockedIssues != 1 {
-		t.Errorf("expected 1 blocked issue, got %d", stats.BlockedIssues)
+	if stats.BlockedIssues == nil || *stats.BlockedIssues != 1 {
+		got := 0
+		if stats.BlockedIssues != nil {
+			got = *stats.BlockedIssues
+		}
+		t.Errorf("expected 1 blocked issue, got %d", got)
 	}
 }
 
