@@ -73,9 +73,29 @@ Use existing init test helpers; embed fake git repo with upstream remote configu
 
 ```
 be-0ccf34 (design) ──✓ closed
-    └── be-c7696f (builder: ready-to-build)
-            └── [validator bead] (validator: needs-tests, blocked by be-c7696f)
+    └── be-c7696f (builder: ready-to-build) ──✓ closed (implemented pre-design spec)
+            └── be-7daa14 (builder: UX alignment to designer spec) ──✓ closed (PR #4028, builder)
+                    └── be-de99a6 (validator: needs-tests) ← NOW READY
 ```
+
+---
+
+## Status (2026-05-17 update)
+
+| Bead | Role | Status |
+|------|------|--------|
+| be-0ccf34 | Designer: UX spec | ✓ closed |
+| be-dsgn01 | PM: decompose | ✓ closed |
+| be-c7696f | Builder: initial impl | ✓ closed (pre-design) |
+| be-7daa14 | Builder: UX alignment | ✓ closed (PR #4028) |
+| be-de99a6 | Validator: 4 test cases | open — READY |
+
+**Builder note:** The builder implemented `autoConfigureForkContributor` in `cmd/bd/init_contributor.go`
+with all 4 variants (happy path, opt-out, re-init, CI/quiet). PR #4028 is open for review.
+
+**bd write path issue:** bd write commands (update/close/create) trigger embedded dolt auto-import
+which fails (context canceled). Used direct MySQL writes to dolt server as workaround. Escalated
+to mayor (mail gm-qnqe55).
 
 ---
 
