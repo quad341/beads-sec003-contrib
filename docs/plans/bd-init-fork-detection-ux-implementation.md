@@ -80,22 +80,31 @@ be-0ccf34 (design) ──✓ closed
 
 ---
 
-## Status (2026-05-17 update)
+## Status (2026-05-18 update)
 
 | Bead | Role | Status |
 |------|------|--------|
 | be-0ccf34 | Designer: UX spec | ✓ closed |
-| be-dsgn01 | PM: decompose | ✓ closed |
 | be-c7696f | Builder: initial impl | ✓ closed (pre-design) |
-| be-7daa14 | Builder: UX alignment | ✓ closed (PR #4028) |
-| be-de99a6 | Validator: 4 test cases | open — READY |
+| be-7daa14 | Builder: UX alignment | ✓ closed (commit 9ed33b68d, PR #4028 open/CI green) |
+| be-de99a6 | Validator: 4 test cases | open — READY (blocker be-7daa14 resolved) |
 
-**Builder note:** The builder implemented `autoConfigureForkContributor` in `cmd/bd/init_contributor.go`
-with all 4 variants (happy path, opt-out, re-init, CI/quiet). PR #4028 is open for review.
+### bd-umbf overall (PR #4023) — open blockers
 
-**bd write path issue:** bd write commands (update/close/create) trigger embedded dolt auto-import
-which fails (context canceled). Used direct MySQL writes to dolt server as workaround. Escalated
-to mayor (mail gm-qnqe55).
+| Blocker | Description | Status |
+|---------|-------------|--------|
+| B1 | Doc freshness CI: bd migrate-personal missing from docs/CLI_REFERENCE.md | ❌ failing |
+| B4 | migrate-personal: no DB-level transaction on delete path | ❌ not addressed |
+
+- **B2** (ubuntu test suite): ✓ now green
+- **Output format** (N1 from review): ✓ fixed by 9ed33b68d and PR #4028
+
+**Builder note:** B1 fix: run `./scripts/generate-cli-docs.sh` and commit. B4 fix: wrap
+the `migrateOneIssue` loop delete path in a DB-level transaction; validate planning DB before any DELETE.
+New bead created for B4 (routed to builder).
+
+**Validator note:** be-de99a6 is now unblocked (mailed 2026-05-18). be-f9a104 (bd-umbf Children 1-3 tests)
+also ready. Tests should target commit 9ed33b68d on feat/be-jewoem-be-u2mw2x-reference-aware-prune.
 
 ---
 
