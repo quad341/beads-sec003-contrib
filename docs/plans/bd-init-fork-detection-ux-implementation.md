@@ -108,6 +108,12 @@ Review bead: **be-72b53f** (routed to builder, `ready-to-build`)
 
 **Remaining:** B3 only — validator completes be-de99a6 + be-f9a104, then PR #4023 re-enters review queue.
 
+### Validator bead scope (2026-05-19 cleanup)
+
+- **be-de99a6**: 4 UX-format tests for `bd init` fork-detection (authoritative for all 4 cases).
+- **be-f9a104**: export `--exclude-owner` (3 tests) + `TestMigratePersonal_*` (3 tests). Fork-detection init tests overlap with be-de99a6 — defer to be-de99a6 for those; be-f9a104 covers export + migrate-personal only.
+- **be-k9c8**: closed 2026-05-19 as superseded by be-f9a104 (same migrate-personal tests, be-f9a104 is PM-authoritative).
+
 ---
 
 ## What this plan does NOT cover
