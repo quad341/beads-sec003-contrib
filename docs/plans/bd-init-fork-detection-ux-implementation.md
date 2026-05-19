@@ -94,18 +94,19 @@ be-0ccf34 (design) ──✓ closed
 
 ### bd-umbf overall (PR #4023) — open blockers
 
-Tracked in review bead **be-72b53f** (routed to builder, `ready-to-build`):
+Review bead: **be-72b53f** (routed to builder, `ready-to-build`)
 
 | Blocker | Description | Status |
 |---------|-------------|--------|
-| B1 | Doc freshness CI: bd migrate-personal missing from docs/CLI_REFERENCE.md | tracked in be-72b53f |
-| B4 | migrate-personal: no DB-level transaction on delete path | tracked in be-72b53f |
+| B1 | Doc freshness CI: bd migrate-personal missing from docs/CLI_REFERENCE.md | ✓ resolved (builder, 2026-05-18) |
+| B2 | Ubuntu test suite | ✓ resolved |
+| B3 | Validator tests (be-de99a6, be-f9a104) | open — slung to validator 2026-05-19 |
+| B4 | migrate-personal: no DB-level transaction on delete path | ✓ resolved (builder, 2026-05-18) |
 
-- **B2** (ubuntu test suite): ✓ now green
 - **Output format** (N1 from review): ✓ fixed by 9ed33b68d and PR #4028
+- PR #4023 last commit db899abb5 (2026-05-18): gate updated B1/B2/B4 resolved, B3 pending validator
 
-**Validator note:** be-de99a6 and be-f9a104 slung to validator 2026-05-19. Tests target
-commit 9ed33b68d on feat/be-jewoem-be-u2mw2x-reference-aware-prune.
+**Remaining:** B3 only — validator completes be-de99a6 + be-f9a104, then PR #4023 re-enters review queue.
 
 ---
 
