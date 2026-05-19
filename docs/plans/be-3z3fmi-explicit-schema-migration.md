@@ -19,14 +19,17 @@
 
 | Bead | Role | Agent | Status |
 |------|------|-------|--------|
-| be-sa4ls9 | Architect: design review (5 open questions) | architect | open |
-| be-lw5fak | Build: `schema.PendingMigrationCount()` helper | builder | blocked by arch |
-| be-o7fh35 | Build: embedded Dolt Store Open schema guard | builder | blocked by helper |
-| be-gudo26 | Build: Dolt server Store Open schema guard | builder | blocked by helper |
-| be-l4z4xw | Build: `bd migrate schema` subcommand | builder | blocked by arch |
-| be-3zy32x | Tests: schema-stale refusal, all backends | validator | blocked by builder |
-| be-vuf19k | Tests: `bd migrate schema` command | validator | blocked by builder |
-| be-ipgt8m | Chore: CLI docs regen | builder | blocked by migrate-cmd |
+| be-sa4ls9 | Architect: design review | architect | ✓ closed |
+| be-lw5fak | Build: `schema.PendingMigrationCount()` helper | builder | ✓ closed |
+| be-o7fh35 | Build: embedded Dolt Store Open schema guard | builder | ✓ closed (commit 78cf5c5b2) |
+| be-gudo26 | Build: Dolt server Store Open schema guard | builder | ✓ closed (commit 78cf5c5b2) |
+| be-l4z4xw | Build: `bd migrate schema` subcommand | builder | ✓ closed (commit f7e75872d) |
+| be-3zy32x | Tests: schema-stale refusal, all backends | validator | **open — slung 2026-05-19** |
+| be-vuf19k | Tests: `bd migrate schema` command | validator | **open — slung 2026-05-19** |
+| be-ipgt8m | Chore: CLI docs regen | builder | open |
+| be-1vz5e8 | (builder duplicate of be-3zy32x) | — | ✓ closed superseded 2026-05-19 |
+
+**Upstream status:** PR #4015 rejected by coffeegoddd (2026-05-17). Architect decision (be-t4n07l): maintain `feat/be-o7fh35-be-gudo26-schema-guards` as fork-local branch. be-3zy32x tests validate against this branch; tests make rebases verifiable.
 
 ## Dependency Graph
 
