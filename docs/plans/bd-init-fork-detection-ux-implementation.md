@@ -80,31 +80,32 @@ be-0ccf34 (design) ──✓ closed
 
 ---
 
-## Status (2026-05-18 update)
+## Status (2026-05-19 — FINAL)
 
 | Bead | Role | Status |
 |------|------|--------|
 | be-0ccf34 | Designer: UX spec | ✓ closed |
 | be-c7696f | Builder: initial impl | ✓ closed (pre-design) |
-| be-7daa14 | Builder: UX alignment | ✓ closed (commit 9ed33b68d, PR #4028 open/CI green) |
-| be-de99a6 | Validator: 4 test cases | open — READY (blocker be-7daa14 resolved) |
+| be-7daa14 | Builder: UX alignment | ✓ closed (commit 9ed33b68d, PR #4028) |
+| be-de99a6 | Validator: 4 test cases | open — slung to validator 2026-05-19 |
+| be-bxeb | Builder-filed validator duplicate | ✓ closed (covered by be-de99a6) |
+| be-f9a104 | bd-umbf Children 1-3 tests | open — routed to validator 2026-05-19 |
+| be-dsgn01 | PM: decompose design | ✓ closed |
 
 ### bd-umbf overall (PR #4023) — open blockers
 
+Tracked in review bead **be-72b53f** (routed to builder, `ready-to-build`):
+
 | Blocker | Description | Status |
 |---------|-------------|--------|
-| B1 | Doc freshness CI: bd migrate-personal missing from docs/CLI_REFERENCE.md | ❌ failing |
-| B4 | migrate-personal: no DB-level transaction on delete path | ❌ not addressed |
+| B1 | Doc freshness CI: bd migrate-personal missing from docs/CLI_REFERENCE.md | tracked in be-72b53f |
+| B4 | migrate-personal: no DB-level transaction on delete path | tracked in be-72b53f |
 
 - **B2** (ubuntu test suite): ✓ now green
 - **Output format** (N1 from review): ✓ fixed by 9ed33b68d and PR #4028
 
-**Builder note:** B1 fix: run `./scripts/generate-cli-docs.sh` and commit. B4 fix: wrap
-the `migrateOneIssue` loop delete path in a DB-level transaction; validate planning DB before any DELETE.
-New bead created for B4 (routed to builder).
-
-**Validator note:** be-de99a6 is now unblocked (mailed 2026-05-18). be-f9a104 (bd-umbf Children 1-3 tests)
-also ready. Tests should target commit 9ed33b68d on feat/be-jewoem-be-u2mw2x-reference-aware-prune.
+**Validator note:** be-de99a6 and be-f9a104 slung to validator 2026-05-19. Tests target
+commit 9ed33b68d on feat/be-jewoem-be-u2mw2x-reference-aware-prune.
 
 ---
 
