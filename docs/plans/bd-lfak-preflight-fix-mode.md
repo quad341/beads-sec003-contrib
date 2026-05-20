@@ -4,17 +4,17 @@
 **PM:** beads/pm  
 **Epic:** bd-lfak — bd preflight: PR readiness checks for contributors
 
-## Status
+## Status (updated 2026-05-20)
 
 Phases 1 (static checklist) and 2 (--check automated checks) are **complete** — implemented via commits bd-lfak.3-bd-lfak.5 (lint, nix-hash staleness, version sync). The core success metrics are substantially met.
 
-Phase 3 (`--fix` mode) remains: the flag is stubbed in `cmd/bd/preflight.go` with a placeholder message.
+Phase 3 (`--fix` mode): **B1 (be-xra8) and B2 (be-roho) are CLOSED** — implementation complete. **T1 (be-b6m9) is IN PROGRESS** — validator is writing test coverage for fixNixHash() and fixVersionSync() branches.
 
 Phase 4 (configuration/.beads/preflight.yaml) is deferred — not in scope for this decomposition.
 
 ## Work Packages
 
-### B1: vendorHash auto-fix — `be-xra8` (ready-to-build → beads/builder)
+### B1: vendorHash auto-fix — `be-xra8` ✓ CLOSED
 
 Implement `fixNixHash()` in `cmd/bd/preflight.go`:
 - Reuse `runNixHashCheck()` detection logic
@@ -25,7 +25,7 @@ Implement `fixNixHash()` in `cmd/bd/preflight.go`:
 
 **P3, no blockers.**
 
-### B2: version-sync auto-fix — `be-roho` (ready-to-build → beads/builder)
+### B2: version-sync auto-fix — `be-roho` ✓ CLOSED
 
 Implement `fixVersionSync()` in `cmd/bd/preflight.go`:
 - Reuse `runVersionSyncCheck()` detection logic
@@ -37,7 +37,7 @@ Also: remove outdated stub message (`"See bd-lfak.3 through bd-lfak.5 for implem
 
 **P3, no blockers. Parallel with B1.**
 
-### T1: --fix mode tests — `be-b6m9` (needs-tests → beads/validator)
+### T1: --fix mode tests — `be-b6m9` ◐ IN PROGRESS (beads/validator)
 
 Add to `cmd/bd/preflight_test.go`:
 - `TestPreflightFix_NixHash` — mock stale go.sum, verify default.nix updated
