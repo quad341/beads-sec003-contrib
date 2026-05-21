@@ -174,3 +174,21 @@ func TestEmbeddedPurgeConcurrent(t *testing.T) {
 		}
 	}
 }
+
+// TestPurge_RejectsIgnoreReferencesFlag verifies that bd purge does NOT accept
+// the --ignore-references flag (which is prune-only). Regression guard for
+// be-g76wkv: the flag is registered only on pruneCmd.Flags() and must remain
+// absent from purgeCmd.
+func TestPurge_RejectsIgnoreReferencesFlag(t *testing.T) {
+	if os.Getenv("BEADS_TEST_EMBEDDED_DOLT") != "1" {
+		t.Skip("set BEADS_TEST_EMBEDDED_DOLT=1 to run embedded dolt integration tests")
+	}
+
+	bd := buildEmbeddedBD(t)
+	dir, _, _ := bdInit(t, bd, "--prefix", "pig")
+
+	out := bdPurgeFail(t, bd, dir, "--ignore-references")
+	if !strings.Contains(out, "unknown flag") {
+		t.Errorf("expected 'unknown flag' in bd purge --ignore-references output, got: %q", out)
+	}
+}
