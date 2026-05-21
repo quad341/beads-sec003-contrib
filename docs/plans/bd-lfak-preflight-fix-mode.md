@@ -4,11 +4,13 @@
 **PM:** beads/pm  
 **Epic:** bd-lfak — bd preflight: PR readiness checks for contributors
 
-## Status (updated 2026-05-21 session 3)
+## Status (updated 2026-05-21 session 4)
 
 Phases 1 (static checklist) and 2 (--check automated checks) are **complete** — implemented via commits bd-lfak.3-bd-lfak.5 (lint, nix-hash staleness, version sync). The core success metrics are substantially met.
 
-Phase 3 (`--fix` mode): **B1 (be-xra8) and B2 (be-roho) are CLOSED** — implementation complete. **PR #4054 — review PASSED (be-nebh, CI 41/41, 2 non-blocking LOWs). Deploy bead be-dknn open with beads/deployer (nudged session 3 — deployer was idle 14h, 5 total deploy beads queued).** **T1 (be-b6m9) is IN PROGRESS** with beads/validator — nudged session 3 after ZlibError; writing test coverage for fixNixHash() and fixVersionSync() branches (separate branch, not in PR #4054).
+Phase 3 (`--fix` mode): **All implementation and test beads are CLOSED.** B1 (be-xra8) + B2 (be-roho) implementation in PR #4054 — review PASSED (CI 41/41, 2 non-blocking LOWs). **PR #4054 is OPEN, awaiting merge** — deploy bead be-dknn was closed by user (manual merge or maintainer-handled). T1 (be-b6m9) tests complete on branch `tests/be-b6m9-preflight-fix` (pushed to fork). **New bead be-fe4y created** to track submitting the test PR after #4054 merges.
+
+Remaining: (1) Merge PR #4054 to gastownhall/beads main. (2) Rebase + submit test PR from tests/be-b6m9-preflight-fix (be-fe4y → beads/builder). (3) Close epic bd-lfak once test PR merges.
 
 Phase 4 (configuration/.beads/preflight.yaml) is deferred — not in scope for this decomposition.
 
@@ -37,7 +39,7 @@ Also: remove outdated stub message (`"See bd-lfak.3 through bd-lfak.5 for implem
 
 **P3, no blockers. Parallel with B1.**
 
-### T1: --fix mode tests — `be-b6m9` ◐ IN PROGRESS (beads/validator)
+### T1: --fix mode tests — `be-b6m9` ✓ CLOSED (beads/validator)
 
 Add to `cmd/bd/preflight_test.go`:
 - `TestPreflightFix_NixHash` — mock stale go.sum, verify default.nix updated
@@ -46,14 +48,22 @@ Add to `cmd/bd/preflight_test.go`:
 - `TestPreflightFix_NothingToFix` — clean state → exits 0, no changes
 - `TestPreflightFix_JSON` — --fix --json output is valid JSON
 
-**P3, blocked by B1 + B2.**
+**P3, blocked by B1 + B2. 14 unit tests on branch `tests/be-b6m9-preflight-fix`, covers all fixNixHash/fixVersionSync/runFixes branches.**
+
+### T2: submit test PR — `be-fe4y` ○ OPEN (beads/builder)
+
+After PR #4054 merges: rebase `tests/be-b6m9-preflight-fix` onto main, open PR to gastownhall/beads. CI must pass. Test-only diff once rebase removes the implementation commits.
+
+**P3, discovered-from be-b6m9.**
 
 ## Dependency Graph
 
 ```
 be-xra8 (B1) ──┐
-                ├──► be-b6m9 (T1) ──► [epic bd-lfak closes when T1 closes]
+                ├──► be-b6m9 (T1) ──► be-fe4y (T2) ──► [epic bd-lfak closes when T2 merges]
 be-roho (B2) ──┘
+
+PR #4054 (open) → merge unblocks T2 rebase
 ```
 
 ## Routing
@@ -63,3 +73,4 @@ be-roho (B2) ──┘
 | be-xra8 | beads/builder | ready-to-build |
 | be-roho | beads/builder | ready-to-build |
 | be-b6m9 | beads/validator | needs-tests |
+| be-fe4y | beads/builder | ready-to-build |
