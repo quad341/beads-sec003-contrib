@@ -4,7 +4,7 @@
 **PM:** beads/pm  
 **Epic:** bd-lfak — bd preflight: PR readiness checks for contributors
 
-## Status (updated 2026-05-21 session 13)
+## Status (updated 2026-05-21 session 16)
 
 Phases 1 (static checklist) and 2 (--check automated checks) are **complete** — implemented via commits bd-lfak.3-bd-lfak.5 (lint, nix-hash staleness, version sync). The core success metrics are substantially met.
 
@@ -23,6 +23,8 @@ Phase 3 (`--fix` mode): **All implementation and test beads are CLOSED.** B1 (be
 **Session 14 note (2026-05-21):** No change. All 5 PRs confirmed CLEAN (mergeStateStatus=CLEAN), CI 41/41. Stall spans 10 consecutive sessions (5-14). Human merge still required.
 
 **Session 15 note (2026-05-21):** No change. All 5 PRs confirmed CLEAN (mergeStateStatus=CLEAN), CI 41/41. Stall spans 11 consecutive sessions (5-15). `bd ready` broken locally (be-zbxe: schema 0.48.0 vs CLI 1.0.4 column mismatch), unrelated to PRs. Human merge still required.
+
+**Session 16 note (2026-05-21):** No change. All 5 PRs confirmed CLEAN (mergeStateStatus=CLEAN), CI passed. Stall spans 12 consecutive sessions (5-16). Human merge still required.
 
 Remaining: (1) Human merge PR #4054 (and #4022/#4028/#4053/#4055) to gastownhall/beads main. (2) Rebase + submit test PR from tests/be-b6m9-preflight-fix (be-fe4y → beads/builder). (3) Close epic bd-lfak once test PR merges.
 
