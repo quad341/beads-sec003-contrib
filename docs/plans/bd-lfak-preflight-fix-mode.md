@@ -4,11 +4,11 @@
 **PM:** beads/pm  
 **Epic:** bd-lfak — bd preflight: PR readiness checks for contributors
 
-## Status (updated 2026-05-20)
+## Status (updated 2026-05-21)
 
 Phases 1 (static checklist) and 2 (--check automated checks) are **complete** — implemented via commits bd-lfak.3-bd-lfak.5 (lint, nix-hash staleness, version sync). The core success metrics are substantially met.
 
-Phase 3 (`--fix` mode): **B1 (be-xra8) and B2 (be-roho) are CLOSED** — implementation complete. **T1 (be-b6m9) is IN PROGRESS** — validator is writing test coverage for fixNixHash() and fixVersionSync() branches.
+Phase 3 (`--fix` mode): **B1 (be-xra8) and B2 (be-roho) are CLOSED** — implementation complete. **PR #4054 open on `feat/be-xra8-be-roho-preflight-fix-mode` — 41/41 CI checks green.** Review bead be-nebh is open and routed to beads/reviewer. **T1 (be-b6m9) is IN PROGRESS** — validator is writing test coverage for fixNixHash() and fixVersionSync() branches (separate branch, not in PR #4054).
 
 Phase 4 (configuration/.beads/preflight.yaml) is deferred — not in scope for this decomposition.
 
