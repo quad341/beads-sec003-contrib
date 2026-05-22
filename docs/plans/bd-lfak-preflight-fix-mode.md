@@ -4,7 +4,7 @@
 **PM:** beads/pm  
 **Epic:** bd-lfak — bd preflight: PR readiness checks for contributors
 
-## Status (updated 2026-05-22 session 49)
+## Status (updated 2026-05-22 session 58)
 
 Phases 1 (static checklist) and 2 (--check automated checks) are **complete** — implemented via commits bd-lfak.3-bd-lfak.5 (lint, nix-hash staleness, version sync). The core success metrics are substantially met.
 
@@ -109,6 +109,8 @@ Phase 3 (`--fix` mode): **All implementation and test beads are CLOSED.** B1 (be
 **Session 56 note (2026-05-22):** No change. PRs #4022/#4053/#4054/#4055 all CLEAN (41/41, MERGEABLE). PR #4028 still DIRTY/CONFLICTING (40/40 CI passes on last run). Stall spans 52 consecutive sessions (5-56). Human merge still required.
 
 **Session 57 note (2026-05-22):** No change. PRs #4022/#4053/#4054/#4055 all CLEAN (41/41, MERGEABLE). PR #4028 still DIRTY/CONFLICTING (40/40 CI passes on last run). Stall spans 53 consecutive sessions (5-57). Human merge still required.
+
+**Session 58 note (2026-05-22):** No change. PRs #4022/#4053/#4054/#4055 all CLEAN (41/41, MERGEABLE). PR #4028 still DIRTY/CONFLICTING. Stall spans 54 consecutive sessions (5-58). Human merge still required.
 
 **Session 42 note (2026-05-22):** No change. All 4 mergeable PRs confirmed CLEAN: #4022 CLEAN (MERGEABLE), #4053 CLEAN (MERGEABLE), #4054 CLEAN (MERGEABLE), #4055 CLEAN (MERGEABLE). PR #4028 still DIRTY/CONFLICTING. Stall spans 38 consecutive sessions (5-42). Human merge still required.
 
