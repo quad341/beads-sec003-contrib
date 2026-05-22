@@ -96,6 +96,8 @@ Phase 3 (`--fix` mode): **All implementation and test beads are CLOSED.** B1 (be
 
 **Session 50 note (2026-05-22):** No change. All 4 mergeable PRs confirmed CLEAN: #4022 CLEAN (41/41, MERGEABLE), #4053 CLEAN (41/41, MERGEABLE), #4054 CLEAN (41/41, MERGEABLE), #4055 CLEAN (41/41, MERGEABLE). PR #4028 still DIRTY/CONFLICTING (40/40 CI passes on last run). Stall spans 46 consecutive sessions (5-50). Human merge still required.
 
+**Session 51 note (2026-05-22):** No change. All 4 mergeable PRs confirmed CLEAN: #4022 CLEAN (MERGEABLE), #4053 CLEAN (MERGEABLE), #4054 CLEAN (41/41, MERGEABLE), #4055 CLEAN (MERGEABLE). PR #4028 still DIRTY/CONFLICTING. Stall spans 47 consecutive sessions (5-51). Human merge still required.
+
 Remaining: (1) Human merge PR #4054 (and #4022/#4028/#4053/#4055) to gastownhall/beads main. (2) Rebase + submit test PR from tests/be-b6m9-preflight-fix (be-fe4y → beads/builder). (3) Close epic bd-lfak once test PR merges.
 
 Phase 4 (configuration/.beads/preflight.yaml) is deferred — not in scope for this decomposition.
