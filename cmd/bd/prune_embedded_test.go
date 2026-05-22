@@ -99,6 +99,7 @@ func TestEmbeddedPrune(t *testing.T) {
 		}
 		for _, args := range [][]string{
 			{"config", "set", "export.auto", "true"},
+			{"config", "set", "export.interval", "1ms"},
 			{"config", "set", "export.git-add", "true"},
 		} {
 			cmd := exec.Command(bd, args...)
