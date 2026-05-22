@@ -4,7 +4,7 @@
 **PM:** beads/pm  
 **Root cause:** be-85qfg — stale bd binary accumulated ~25,000 errno-1105 errors over 16h  
 **Architecture:** be-blpg3  
-**Status:** In-flight
+**Status:** In-flight — builder has be-wwbsv + be-x0rl6; validator has be-0x25q (blocked)
 
 ---
 
