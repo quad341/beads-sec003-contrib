@@ -4,11 +4,13 @@
 **PM:** beads/pm  
 **Epic:** bd-lfak — bd preflight: PR readiness checks for contributors
 
-## Status (updated 2026-05-21 session 22)
+## Status (updated 2026-05-22 session 23)
 
 Phases 1 (static checklist) and 2 (--check automated checks) are **complete** — implemented via commits bd-lfak.3-bd-lfak.5 (lint, nix-hash staleness, version sync). The core success metrics are substantially met.
 
 Phase 3 (`--fix` mode): **All implementation and test beads are CLOSED.** B1 (be-xra8) + B2 (be-roho) implementation in PR #4054 — review PASSED (CI 41/41, 2 non-blocking LOWs). **PR #4054 is OPEN, awaiting merge.** Deployer batch-processed all 5 queued PRs in session 4 (be-dknn, be-rqkw, be-i88i, be-ivuh, be-vd2t) — all gate PASS, mailed mayor. PRs #4022/#4028/#4053/#4054/#4055 ready to merge (no deployer write access to gastownhall/beads — human merge required). T1 (be-b6m9) tests complete on branch `tests/be-b6m9-preflight-fix` (pushed to fork). be-fe4y (submit test PR) open on beads/builder, blocked on #4054 merge.
+
+**Current PR snapshot (session 23):** #4022 CLEAN (41/41), #4053 CLEAN (41/41, reviewer-approved), #4054 CLEAN (41/41), #4055 CLEAN (41/41). #4028 DIRTY/CONFLICTING (needs rebase, 40/40 CI passes on last run). 4 of 5 PRs are merge-ready.
 
 **Session 9 note (2026-05-21):** Confirmed all 5 PRs are `mergeStateStatus=CLEAN` (no conflicts, all CI green). maintainer-pr-review skill refused: `gastownhall/beads` not in maintained-repos scope. Mailed mayor with two options: (1) merge PRs manually, or (2) authorize `GC_MPR_ALLOW_UNMAINTAINED=1` so skill can handle it. Stall now spans 5 consecutive sessions (5-9).
 
@@ -37,6 +39,8 @@ Phase 3 (`--fix` mode): **All implementation and test beads are CLOSED.** B1 (be
 **Session 21 note (2026-05-21):** **NEW: PR #4028 flipped to DIRTY (CONFLICTING).** PRs #4022, #4053, #4054, #4055 still CLEAN. PR #4028 (fix/be-7daa14-fork-detection-output, feat(init): auto-configure contributor routing on fork detect) now has a merge conflict against main. CI on its last run (2026-05-19) was fully passing. Recommended merge order: merge the 4 CLEAN PRs first (#4022, #4053, #4054, #4055), then someone with repo write access rebases #4028 onto main and retriggers CI. Mailed mayor. Stall spans 17 consecutive sessions (5-21). Human merge still required.
 
 **Session 22 note (2026-05-21):** PR #4053 received a **✅ reviewer verdict** from beads/reviewer agent (posted ~23:48 UTC) — "looks good to merge (one LOW, not a blocker)"; CI re-triggered and 27/41 passed with 14 still running. PR #4028 still DIRTY; conflict analyzed: `cmd/bd/init.go` ~line 1275, where both #4028 (adds `autoConfigureForkContributor` call block) and main's #4063 (changed auto-export from opt-out to opt-in) modified the same area. Conflict is straightforward: keep PR's contributor-routing block, adopt main's auto-export comment. PR status: #4022 CLEAN (41/41), #4028 DIRTY, #4053 UNSTABLE (CI running, reviewer approved), #4054 CLEAN (41/41), #4055 CLEAN (41/41). Stall spans 18 consecutive sessions (5-22). Human merge still required.
+
+**Session 23 note (2026-05-22):** PR #4053 CI finished — now **CLEAN (41/41)**; reviewer approval from session 22 still stands. All 4 mergeable PRs now fully green: #4022 CLEAN (41/41), #4053 CLEAN (41/41), #4054 CLEAN (41/41), #4055 CLEAN (41/41). PR #4028 still DIRTY/CONFLICTING (40/40 CI passes on last run, but merge conflict unresolved). Stall spans 19 consecutive sessions (5-23). Human merge still required.
 
 Remaining: (1) Human merge PR #4054 (and #4022/#4028/#4053/#4055) to gastownhall/beads main. (2) Rebase + submit test PR from tests/be-b6m9-preflight-fix (be-fe4y → beads/builder). (3) Close epic bd-lfak once test PR merges.
 
