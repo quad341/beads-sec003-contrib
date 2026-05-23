@@ -4,7 +4,7 @@
 **PM:** beads/pm  
 **Epic:** bd-lfak — bd preflight: PR readiness checks for contributors
 
-## Status (updated 2026-05-23 session 93)
+## Status (updated 2026-05-23 session 97)
 
 Phases 1 (static checklist) and 2 (--check automated checks) are **complete** — implemented via commits bd-lfak.3-bd-lfak.5 (lint, nix-hash staleness, version sync). The core success metrics are substantially met.
 
@@ -187,6 +187,8 @@ Phase 3 (`--fix` mode): **All implementation and test beads are CLOSED.** B1 (be
 **Session 95 note (2026-05-23):** No change. 3 mergeable PRs: #4053 CLEAN (41/41, MERGEABLE), #4054 CLEAN (41/41, MERGEABLE), #4055 CLEAN (41/41, MERGEABLE). PRs #4022 and #4028 both DIRTY/CONFLICTING. NEW: be-5dyi2 filed (Dolt v2.0.6 fleet-wide CI breakage, investigator routed to mayor); dolt-pin-CI or migration-0041-rewrite fix pending. Merge window still open — 3 CLEAN PRs have pre-2.0.6 CI runs; do NOT re-trigger CI. Stall spans 91 consecutive sessions (5-95). Human merge still required.
 
 **Session 96 note (2026-05-23):** No change. 3 mergeable PRs: #4053 CLEAN (last CI 2026-05-21T23:53Z, MERGEABLE), #4054 CLEAN (last CI 2026-05-21T12:13Z, MERGEABLE), #4055 CLEAN (last CI 2026-05-21T23:46Z, MERGEABLE). PRs #4022 and #4028 both DIRTY/CONFLICTING. All 3 CLEAN PRs confirmed pre-Dolt-2.0.6 CI runs — merge window still open; do NOT re-trigger CI. be-5dyi2 still OPEN/routed to mayor. Stall spans 92 consecutive sessions (5-96). Human merge still required.
+
+**Session 97 note (2026-05-23):** No change. 3 mergeable PRs: #4053 CLEAN (41/41, MERGEABLE), #4054 CLEAN (41/41, MERGEABLE), #4055 CLEAN (41/41, MERGEABLE). PRs #4022 and #4028 both DIRTY/CONFLICTING. be-5dyi2 still OPEN/routed to mayor (Dolt 2.0.6 CI breakage). Merge window still open; do NOT re-trigger CI. Stall spans 93 consecutive sessions (5-97). Human merge still required.
 
 Remaining: (1) Human merge PR #4054 (and #4022/#4028/#4053/#4055) to gastownhall/beads main. (2) Rebase + submit test PR from tests/be-b6m9-preflight-fix (be-fe4y → beads/builder). (3) Close epic bd-lfak once test PR merges.
 
