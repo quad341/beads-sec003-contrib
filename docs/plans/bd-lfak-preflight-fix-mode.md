@@ -228,6 +228,8 @@ Phase 3 (`--fix` mode): **All implementation and test beads are CLOSED.** B1 (be
 
 **Session 117 note (2026-05-23):** No change. PR #4120 CLEAN (41/41, 0 reviews, MERGEABLE) — Dolt 2.0.6 fix still awaiting merge. Phase 3 PRs: #4053 CLEAN (41/41, MERGEABLE), #4054 CLEAN (41/41, MERGEABLE), #4055 CLEAN (41/41, MERGEABLE). PRs #4022 and #4028 both DIRTY/CONFLICTING (confirmed). New no-CI-yet PRs: #4101 (docs related projects), #4104 (perf(stats) parallelize). Stall spans 113 consecutive sessions (5-117). Human merge still required.
 
+**Session 118 note (2026-05-23):** No change on core stall. PR #4120 CLEAN (41/41, 0 reviews, MERGEABLE) — Dolt 2.0.6 fix still awaiting merge. Phase 3 PRs: #4053 CLEAN (41/41, MERGEABLE), #4054 CLEAN (41/41, MERGEABLE), #4055 CLEAN (41/41, MERGEABLE). PRs #4022 and #4028 both DIRTY/CONFLICTING (confirmed). PRs #4118/#4125/#4123 still UNSTABLE (38✓/3✗, 38✓/3✗, 39✓/4✗ respectively — need #4120 first). PRs #4116/#4114 still 40✓/1✗ (routed to builder). **NEW no-CI-yet PRs from builder:** #4131 (fix(storage/dolt): IterDependentsWithMetadata uses 3-way split deps post-0043) and #4133 (fix(dolt): disable background workers and drain MySQL handshake before TCP close). Stall spans 114 consecutive sessions (5-118). Human merge still required.
+
 Remaining: (1) Human merge PR #4054 (and #4022/#4028/#4053/#4055) to gastownhall/beads main. (2) Rebase + submit test PR from tests/be-b6m9-preflight-fix (be-fe4y → beads/builder). (3) Close epic bd-lfak once test PR merges.
 
 Phase 4 (configuration/.beads/preflight.yaml) is deferred — not in scope for this decomposition.
