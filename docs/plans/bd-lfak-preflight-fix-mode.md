@@ -4,7 +4,7 @@
 **PM:** beads/pm  
 **Epic:** bd-lfak — bd preflight: PR readiness checks for contributors
 
-## Status (updated 2026-05-23 session 103)
+## Status (updated 2026-05-23 session 104)
 
 Phases 1 (static checklist) and 2 (--check automated checks) are **complete** — implemented via commits bd-lfak.3-bd-lfak.5 (lint, nix-hash staleness, version sync). The core success metrics are substantially met.
 
@@ -201,6 +201,8 @@ Phase 3 (`--fix` mode): **All implementation and test beads are CLOSED.** B1 (be
 **Session 102 note (2026-05-23):** No change. PR #4120 CLEAN (41/41, MERGEABLE) — Dolt 2.0.6 fix still awaiting merge. Phase 3 PRs: #4053 CLEAN (41/41, MERGEABLE), #4054 CLEAN (41/41, MERGEABLE), #4055 CLEAN (41/41, MERGEABLE). PRs #4022 and #4028 both DIRTY/CONFLICTING (CI passes on last run: 41/41 and 40/40 respectively). Merge window still open — do NOT re-trigger CI on #4053/#4054/#4055 until #4120 merges. Stall spans 98 consecutive sessions (5-102). Human merge still required.
 
 **Session 103 note (2026-05-23):** No change. PR #4120 (41/41 CI pass) still awaiting merge. Phase 3 PRs: #4053 CLEAN (41/41), #4054 CLEAN (41/41), #4055 CLEAN (41/41). PR #4028 DIRTY/CONFLICTING. PR #4022 mergeStateStatus UNKNOWN (GitHub recomputing; last confirmed state was DIRTY). Merge window still open — do NOT re-trigger CI on #4053/#4054/#4055 until #4120 merges. Stall spans 99 consecutive sessions (5-103). Human merge still required.
+
+**Session 104 note (2026-05-23):** No change. PR #4120 CLEAN (41/41, MERGEABLE) — Dolt 2.0.6 fix still awaiting merge. Phase 3 PRs: #4053 CLEAN (MERGEABLE), #4054 CLEAN (MERGEABLE), #4055 CLEAN (MERGEABLE). PR #4022 DIRTY/CONFLICTING (confirmed). PR #4028 DIRTY/CONFLICTING (unchanged). Merge window still open — do NOT re-trigger CI on #4053/#4054/#4055 until #4120 merges. Stall spans 100 consecutive sessions (5-104). Human merge still required.
 
 Remaining: (1) Human merge PR #4054 (and #4022/#4028/#4053/#4055) to gastownhall/beads main. (2) Rebase + submit test PR from tests/be-b6m9-preflight-fix (be-fe4y → beads/builder). (3) Close epic bd-lfak once test PR merges.
 
