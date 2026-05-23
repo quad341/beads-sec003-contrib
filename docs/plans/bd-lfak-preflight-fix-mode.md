@@ -4,7 +4,7 @@
 **PM:** beads/pm  
 **Epic:** bd-lfak — bd preflight: PR readiness checks for contributors
 
-## Status (updated 2026-05-23 session 100)
+## Status (updated 2026-05-23 session 103)
 
 Phases 1 (static checklist) and 2 (--check automated checks) are **complete** — implemented via commits bd-lfak.3-bd-lfak.5 (lint, nix-hash staleness, version sync). The core success metrics are substantially met.
 
@@ -199,6 +199,8 @@ Phase 3 (`--fix` mode): **All implementation and test beads are CLOSED.** B1 (be
 **Session 101 note (2026-05-23):** **CRITICAL NEW DEVELOPMENT: PR #4120 is OPEN, MERGEABLE, 41/41 CLEAN.** PR #4120 ("fix(schema): reorder 0041 FK before generated column (Dolt 2.0.6 compat) — unblocks all CI", branch fix/dolt206-fk-on-generated-col) has passed full CI on Dolt 2.0.6. This is the migration 0041 fix for be-5dyi2. Once #4120 merges: (1) the "do NOT re-trigger CI" warning is LIFTED — all open PRs can safely trigger CI, (2) be-5dyi2 can be closed. Phase 3 PRs: #4053 CLEAN (41/41, MERGEABLE), #4054 CLEAN (41/41, MERGEABLE), #4055 CLEAN (41/41, MERGEABLE). PRs #4022 and #4028 both DIRTY/CONFLICTING (unchanged). **Recommended merge order: (1) #4120 first, (2) then #4053/#4054/#4055 (re-trigger CI after #4120 lands to verify on Dolt 2.0.6), (3) rebase and merge #4022/#4028 separately.** Stall spans 97 consecutive sessions (5-101). Human merge still required.
 
 **Session 102 note (2026-05-23):** No change. PR #4120 CLEAN (41/41, MERGEABLE) — Dolt 2.0.6 fix still awaiting merge. Phase 3 PRs: #4053 CLEAN (41/41, MERGEABLE), #4054 CLEAN (41/41, MERGEABLE), #4055 CLEAN (41/41, MERGEABLE). PRs #4022 and #4028 both DIRTY/CONFLICTING (CI passes on last run: 41/41 and 40/40 respectively). Merge window still open — do NOT re-trigger CI on #4053/#4054/#4055 until #4120 merges. Stall spans 98 consecutive sessions (5-102). Human merge still required.
+
+**Session 103 note (2026-05-23):** No change. PR #4120 (41/41 CI pass) still awaiting merge. Phase 3 PRs: #4053 CLEAN (41/41), #4054 CLEAN (41/41), #4055 CLEAN (41/41). PR #4028 DIRTY/CONFLICTING. PR #4022 mergeStateStatus UNKNOWN (GitHub recomputing; last confirmed state was DIRTY). Merge window still open — do NOT re-trigger CI on #4053/#4054/#4055 until #4120 merges. Stall spans 99 consecutive sessions (5-103). Human merge still required.
 
 Remaining: (1) Human merge PR #4054 (and #4022/#4028/#4053/#4055) to gastownhall/beads main. (2) Rebase + submit test PR from tests/be-b6m9-preflight-fix (be-fe4y → beads/builder). (3) Close epic bd-lfak once test PR merges.
 
