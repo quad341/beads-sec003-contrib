@@ -4,7 +4,7 @@
 **PM:** beads/pm  
 **Epic:** bd-lfak — bd preflight: PR readiness checks for contributors
 
-## Status (updated 2026-05-23 session 116)
+## Status (updated 2026-05-23 session 117)
 
 Phases 1 (static checklist) and 2 (--check automated checks) are **complete** — implemented via commits bd-lfak.3-bd-lfak.5 (lint, nix-hash staleness, version sync). The core success metrics are substantially met.
 
@@ -225,6 +225,8 @@ Phase 3 (`--fix` mode): **All implementation and test beads are CLOSED.** B1 (be
 **Session 114 note (2026-05-23):** No change. PR #4120 CLEAN (41/41, 0 reviews, MERGEABLE) — Dolt 2.0.6 fix still awaiting merge. Phase 3 PRs: #4053 CLEAN (41/41, MERGEABLE), #4054 CLEAN (41/41, MERGEABLE), #4055 CLEAN (41/41, MERGEABLE). PRs #4022 and #4028 both DIRTY/CONFLICTING (unchanged). Context: upstream main received 10 community-contributor merges in the past ~24h (#4088-#4092, #4103, #4105, #4107-#4108, #4124) — maintainers are active; our queue remains untouched. Builder has TDD gate tests for be-r75by (git-origin collision guard) and be-lbhy2 (dolt.local-only enforcement) in local branch not yet pushed as PRs. New clean no-CI-yet PRs: #4129. Merge window still open — do NOT re-trigger CI on #4053/#4054/#4055 until #4120 merges. Stall spans 110 consecutive sessions (5-114). Human merge still required.
 
 **Session 116 note (2026-05-23):** No change. PR #4120 CLEAN (41/41, 0 reviews, MERGEABLE) — Dolt 2.0.6 fix still awaiting merge. Phase 3 PRs: #4053 CLEAN (41/41, MERGEABLE), #4054 CLEAN (41/41, MERGEABLE), #4055 CLEAN (41/41, MERGEABLE). PRs #4022 and #4028 both DIRTY/CONFLICTING (unchanged). Merge window still open — do NOT re-trigger CI on #4053/#4054/#4055 until #4120 merges. Stall spans 112 consecutive sessions (5-116). Human merge still required.
+
+**Session 117 note (2026-05-23):** No change. PR #4120 CLEAN (41/41, 0 reviews, MERGEABLE) — Dolt 2.0.6 fix still awaiting merge. Phase 3 PRs: #4053 CLEAN (41/41, MERGEABLE), #4054 CLEAN (41/41, MERGEABLE), #4055 CLEAN (41/41, MERGEABLE). PRs #4022 and #4028 both DIRTY/CONFLICTING (confirmed). New no-CI-yet PRs: #4101 (docs related projects), #4104 (perf(stats) parallelize). Stall spans 113 consecutive sessions (5-117). Human merge still required.
 
 Remaining: (1) Human merge PR #4054 (and #4022/#4028/#4053/#4055) to gastownhall/beads main. (2) Rebase + submit test PR from tests/be-b6m9-preflight-fix (be-fe4y → beads/builder). (3) Close epic bd-lfak once test PR merges.
 
