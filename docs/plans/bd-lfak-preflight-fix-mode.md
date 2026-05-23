@@ -210,6 +210,8 @@ Phase 3 (`--fix` mode): **All implementation and test beads are CLOSED.** B1 (be
 
 **Session 107 note (2026-05-23):** No change. PR #4120 (Dolt 2.0.6 fix) CLEAN (MERGEABLE) — still awaiting merge. Phase 3 PRs: #4053 CLEAN (MERGEABLE), #4054 CLEAN (MERGEABLE), #4055 CLEAN (MERGEABLE). PRs #4022 and #4028 both DIRTY/CONFLICTING (unchanged). Additional CLEAN/mergeable PRs ready anytime (no Dolt 2.0.6 dep): #4095, #4096, #4097, #4100, #4109, #4110, #4111, #4112, #4113, #4115. PRs #4118/#4119/#4123/#4125 UNSTABLE (need #4120 first). Merge window still open — do NOT re-trigger CI on #4053/#4054/#4055 until #4120 merges. Stall spans 103 consecutive sessions (5-107). Human merge still required.
 
+**Session 108 note (2026-05-23):** No change. PR #4120 CLEAN (41/41, 0 reviews, MERGEABLE) — Dolt 2.0.6 fix still awaiting merge. Phase 3 PRs: #4053 CLEAN (MERGEABLE), #4054 CLEAN (MERGEABLE), #4055 CLEAN (MERGEABLE). PRs #4022 and #4028 both DIRTY/CONFLICTING (confirmed). Merge window still open — do NOT re-trigger CI on #4053/#4054/#4055 until #4120 merges. Stall spans 104 consecutive sessions (5-108). Human merge still required.
+
 Remaining: (1) Human merge PR #4054 (and #4022/#4028/#4053/#4055) to gastownhall/beads main. (2) Rebase + submit test PR from tests/be-b6m9-preflight-fix (be-fe4y → beads/builder). (3) Close epic bd-lfak once test PR merges.
 
 Phase 4 (configuration/.beads/preflight.yaml) is deferred — not in scope for this decomposition.
