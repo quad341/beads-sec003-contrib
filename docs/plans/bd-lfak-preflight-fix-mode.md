@@ -4,7 +4,7 @@
 **PM:** beads/pm  
 **Epic:** bd-lfak — bd preflight: PR readiness checks for contributors
 
-## Status (updated 2026-05-23 session 124)
+## Status (updated 2026-05-23 session 126)
 
 Phases 1 (static checklist) and 2 (--check automated checks) are **complete** — implemented via commits bd-lfak.3-bd-lfak.5 (lint, nix-hash staleness, version sync). The core success metrics are substantially met.
 
@@ -241,6 +241,8 @@ Phase 3 (`--fix` mode): **All implementation and test beads are CLOSED.** B1 (be
 **Session 123 note (2026-05-23):** No change. PR #4120 CLEAN (41/41, MERGEABLE) — Dolt 2.0.6 fix still awaiting merge. Phase 3 PRs: #4053 CLEAN (41/41, MERGEABLE), #4054 CLEAN (41/41, MERGEABLE), #4055 CLEAN (41/41, MERGEABLE). PRs #4022 and #4028 still DIRTY/CONFLICTING (unchanged). PRs #4118/#4125/#4123 still UNSTABLE (38✓/3✗, 38✓/3✗, 39✓/4✗ — need #4120 first). Main HEAD afcc5bbe4 (docs PR #4124 merge) — CI red on Dolt 2.0.6. Stall spans 119 consecutive sessions (5-123). Human merge still required.
 
 **Session 124 note (2026-05-23):** No change. PR #4120 CLEAN (41/41, MERGEABLE) — Dolt 2.0.6 fix still awaiting merge. Phase 3 PRs: #4053 CLEAN (41/41, MERGEABLE), #4054 CLEAN (41/41, MERGEABLE), #4055 CLEAN (41/41, MERGEABLE). PRs #4022 and #4028 still DIRTY/CONFLICTING (41✓ and 40✓ on last CI runs). Main HEAD still afcc5bbe4 (docs PR #4124). Stall spans 120 consecutive sessions (5-124). Human merge still required.
+
+**Session 126 note (2026-05-23): STALL BROKEN — merge wave landed.** Three PRs merged to gastownhall/beads main since session 124: (1) **#4120 MERGED** — fix(schema): reorder 0041 FK before generated column for Dolt 2.0.6 — fleet CI now unblocked; "do NOT re-trigger CI" warning LIFTED; be-5dyi2 CLOSED. (2) **#4028 MERGED** — feat(init): auto-configure contributor routing on fork detect (be-7daa14) — be-x886 rebase bead CLOSED (obsolete). (3) **#4123 MERGED** — ci: gate regression tests on risky PR paths. Main HEAD is now 82020c42f. Phase 3 PRs #4022/#4053/#4054/#4055 currently show state=OPEN, mergeability=UNKNOWN (GitHub recalculating after merge wave; last CI runs all 41✓/0✗). All 4 PRs are now safe to re-trigger CI and merge. PR #4118 (be-kjp7x) was 38✓/3✗ on old Dolt-2.0.6-broken CI — also safe to re-trigger now. be-fe4y (submit test PR) still blocked on #4054 merge. Stall ended at session 125 (121 sessions).
 
 Remaining: (1) Human merge PR #4054 (and #4022/#4028/#4053/#4055) to gastownhall/beads main. (2) Rebase + submit test PR from tests/be-b6m9-preflight-fix (be-fe4y → beads/builder). (3) Close epic bd-lfak once test PR merges.
 
