@@ -4,7 +4,7 @@
 **PM:** beads/pm  
 **Epic:** bd-lfak — bd preflight: PR readiness checks for contributors
 
-## Status (updated 2026-05-23 session 104)
+## Status (updated 2026-05-23 session 110)
 
 Phases 1 (static checklist) and 2 (--check automated checks) are **complete** — implemented via commits bd-lfak.3-bd-lfak.5 (lint, nix-hash staleness, version sync). The core success metrics are substantially met.
 
@@ -213,6 +213,8 @@ Phase 3 (`--fix` mode): **All implementation and test beads are CLOSED.** B1 (be
 **Session 108 note (2026-05-23):** No change on #4120 — PR #4120 CLEAN (41/41, 0 reviews, MERGEABLE), Dolt 2.0.6 fix still awaiting merge. Phase 3 PRs: #4053 CLEAN (MERGEABLE), #4054 CLEAN (MERGEABLE), #4055 CLEAN (MERGEABLE). PRs #4022 and #4028 DIRTY/CONFLICTING (confirmed). Additional CLEAN PRs ready anytime: #4095, #4096, #4097, #4100, #4109, #4110, #4111, #4112, #4113 all 41✓/0✗. **NEW PRs with CI issues:** #4116 (add migrate schema command) 40✓/1✗ doc-flags-freshness → CLI docs regen needed (be-j23to filed/routed to builder); #4114 (fix(list) disable truncation when piped) 40✓/1✗ TestEmbeddedList/limit_truncation_hint → test not updated for behavior change (be-jvqkg filed/routed to builder). New clean: #4115 (fix(mcp) route validate to bd doctor) 19✓/0✗ MERGEABLE. New no-CI-yet: #4119 (linear outbound_state_map), #4117 (graph CSS scope + fit-to-view), #4104 (perf stats parallelize), #4101 (docs). Merge window still open — do NOT re-trigger CI on #4053/#4054/#4055 until #4120 merges. Stall spans 104 consecutive sessions (5-108). Human merge still required.
 
 **Session 109 note (2026-05-23):** No change. PR #4120 CLEAN (41/41, MERGEABLE) — Dolt 2.0.6 fix still awaiting merge. Phase 3 PRs: #4053 CLEAN (41/41, MERGEABLE), #4054 CLEAN (41/41, MERGEABLE), #4055 CLEAN (41/41, MERGEABLE). PRs #4022 and #4028 both DIRTY/CONFLICTING (41✓ and 40✓ on last CI runs). **NEW CLEAN PRs discovered:** #4057 feat(promote) 41✓, #4058 feat(verbosity) 41✓, #4077 fix(deps) directed sibling check 41✓, #4081 feat(formula) intent field 41✓ — all MERGEABLE, no Dolt 2.0.6 dependency. #4114 and #4116 still UNSTABLE (routed to builder last session). Merge window still open — do NOT re-trigger CI on #4053/#4054/#4055 until #4120 merges. Stall spans 105 consecutive sessions (5-109). Human merge still required.
+
+**Session 110 note (2026-05-23):** No change. PR #4120 CLEAN (41/41, MERGEABLE) — Dolt 2.0.6 fix still awaiting merge. Phase 3 PRs: #4053 CLEAN (41/41, MERGEABLE), #4054 CLEAN (41/41, MERGEABLE), #4055 CLEAN (41/41, MERGEABLE). PRs #4022 and #4028 both DIRTY/CONFLICTING (41✓ and 40✓ on last CI runs). Merge window still open — do NOT re-trigger CI on #4053/#4054/#4055 until #4120 merges. Stall spans 106 consecutive sessions (5-110). Human merge still required.
 
 Remaining: (1) Human merge PR #4054 (and #4022/#4028/#4053/#4055) to gastownhall/beads main. (2) Rebase + submit test PR from tests/be-b6m9-preflight-fix (be-fe4y → beads/builder). (3) Close epic bd-lfak once test PR merges.
 
