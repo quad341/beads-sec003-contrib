@@ -4,7 +4,7 @@
 **PM:** beads/pm  
 **Epic:** bd-lfak — bd preflight: PR readiness checks for contributors
 
-## Status (updated 2026-05-23 session 128)
+## Status (updated 2026-05-23 session 129)
 
 Phases 1 (static checklist) and 2 (--check automated checks) are **complete** — implemented via commits bd-lfak.3-bd-lfak.5 (lint, nix-hash staleness, version sync). The core success metrics are substantially met.
 
@@ -249,6 +249,8 @@ Remaining: (1) Human merge PR #4054 (and #4022/#4028/#4053/#4055) to gastownhall
 **Session 127 note (2026-05-23):** GitHub mergeability resolved post-merge-wave. 3 Phase 3 PRs CLEAN: #4053 CLEAN (41/41, MERGEABLE), #4054 CLEAN (41/41, MERGEABLE), #4055 CLEAN (41/41, MERGEABLE). PR #4022 DIRTY/CONFLICTING (41✓ on last CI run). CI runs on #4053/#4054/#4055 are from 2026-05-21 (pre-#4120 merge); safe to re-trigger now that #4120 is in main. be-fe4y still blocked on #4054 merge. Human merge required.
 
 **Session 128 note (2026-05-23):** No change. #4053 CLEAN (41/41, MERGEABLE), #4054 CLEAN (41/41, MERGEABLE), #4055 CLEAN (41/41, MERGEABLE). #4022 DIRTY/CONFLICTING (41✓ on last CI run; #4028 already merged). CI runs on #4053/#4054/#4055 are from 2026-05-21 (pre-#4120); consider re-triggering before merge. be-fe4y still blocked on #4054 merge. Human merge required.
+
+**Session 129 note (2026-05-23):** State unchanged on Phase 3 PRs: #4053 CLEAN (41/41, MERGEABLE), #4054 CLEAN (41/41, MERGEABLE), #4055 CLEAN (41/41, MERGEABLE). #4022 DIRTY/CONFLICTING (41✓ on last CI run). **REVISED CI guidance:** Prior recommendation "re-trigger before merge" is no longer safe — fresh CI on these branches would fail for two new reasons: (1) migration 0041 in these branches is pre-#4120 fix; Dolt 2.0.6 is now `latest` and would break Test (ubuntu/macos/storage+uow) jobs; (2) #4123 (regression gate) is now in main — risky-path PRs like these would trigger the Differential Regression job, which is still red on main (be-bpmg5 unfixed). **Recommended path: MERGE DIRECTLY.** GitHub confirms all 3 PRs are MERGEABLE — the merge-commit simulation incorporates current main (including #4120). The merged code will be clean. Maintainer should NOT re-trigger CI before merging; CI will re-run cleanly post-merge once be-bpmg5 is fixed. be-fe4y still blocked on #4054 merge. Human merge required.
 
 Phase 4 (configuration/.beads/preflight.yaml) is deferred — not in scope for this decomposition.
 
