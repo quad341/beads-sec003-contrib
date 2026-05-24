@@ -4,7 +4,7 @@
 **PM:** beads/pm  
 **Epic:** bd-lfak — bd preflight: PR readiness checks for contributors
 
-## Status (updated 2026-05-24 session 153)
+## Status (updated 2026-05-24 session 154)
 
 Phases 1 (static checklist) and 2 (--check automated checks) are **complete** — implemented via commits bd-lfak.3-bd-lfak.5 (lint, nix-hash staleness, version sync). The core success metrics are substantially met.
 
@@ -289,6 +289,8 @@ Remaining: (1) Human merge PR #4054 (and #4022/#4028/#4053/#4055) to gastownhall
 **Session 152 note (2026-05-24):** No change. Phase 3 PRs: #4053 CLEAN (MERGEABLE), #4054 CLEAN (MERGEABLE), #4055 CLEAN (MERGEABLE). #4022 DIRTY/CONFLICTING (still needs rebase). Main still at 82020c42f (no new merges since session 130). be-fe4y still blocked on #4054 merge. be-tpfnu (fix stale TestShowJSONFieldCompleteness) and be-3t2cc (rebase PR #3662 migration renumber) both open, routed to builder. Recommended merge order unchanged: #4054 first (unblocks be-fe4y), then #4053 and #4055 in any order. Stall spans 147 consecutive sessions (5-151). Human merge still required.
 
 **Session 153 note (2026-05-24):** No change. Phase 3 PRs: #4053 CLEAN (MERGEABLE), #4054 CLEAN (MERGEABLE), #4055 CLEAN (MERGEABLE). #4022 DIRTY/CONFLICTING. Main still at 82020c42f (no new merges since session 130). be-fe4y still blocked on #4054 merge. Stall spans 148 consecutive sessions (5-152). Human merge still required.
+
+**Session 154 note (2026-05-24):** **Main advanced to 8ae4c3c67b.** Two new commits since session 153: PR #4028 (feat(init): auto-configure contributor routing on fork detect) was MERGED (previously DIRTY/CONFLICTING — conflict resolved by human), then bug fix #4139 (fix: repair PR4107 blocked-state corruption) landed on top. Phase 3 PRs remain CLEAN and MERGEABLE: #4053 CLEAN (41/41), #4054 CLEAN (41/41), #4055 CLEAN (41/41). #4022 (stats --no-blocked) still DIRTY/CONFLICTING (not blocking Phase 3). be-fe4y still blocked on #4054 merge. Stall on Phase 3 spans 149 consecutive sessions (5-153). Human merge still required.
 
 Phase 4 (configuration/.beads/preflight.yaml) is deferred — not in scope for this decomposition.
 
