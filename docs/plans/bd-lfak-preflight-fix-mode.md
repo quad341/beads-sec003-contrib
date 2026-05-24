@@ -292,6 +292,8 @@ Remaining: (1) Human merge PR #4054 (and #4022/#4028/#4053/#4055) to gastownhall
 
 **Session 154 note (2026-05-24):** **Main advanced to 8ae4c3c67b.** Two new commits since session 153: PR #4028 (feat(init): auto-configure contributor routing on fork detect) was MERGED (previously DIRTY/CONFLICTING — conflict resolved by human), then bug fix #4139 (fix: repair PR4107 blocked-state corruption) landed on top. Phase 3 PRs remain CLEAN and MERGEABLE: #4053 CLEAN (41/41), #4054 CLEAN (41/41), #4055 CLEAN (41/41). #4022 (stats --no-blocked) still DIRTY/CONFLICTING (not blocking Phase 3). be-fe4y still blocked on #4054 merge. Stall on Phase 3 spans 149 consecutive sessions (5-153). Human merge still required.
 
+**Session 155 note (2026-05-24):** No change. Phase 3 PRs: #4053 CLEAN (41/41, MERGEABLE), #4054 CLEAN (41/41, MERGEABLE), #4055 CLEAN (41/41, MERGEABLE). #4022 DIRTY/CONFLICTING (41✓ on last CI run; still needs rebase). Main still at 8ae4c3c67b (no new merges since session 154). be-bpmg5 (Differential Regression harness fix) OPEN/routed to builder. be-fe4y still blocked on #4054 merge. Recommended merge order unchanged: #4054 first (unblocks be-fe4y), then #4053 and #4055 in any order. Stall spans 150 consecutive sessions (5-154). Human merge still required.
+
 Phase 4 (configuration/.beads/preflight.yaml) is deferred — not in scope for this decomposition.
 
 ## Work Packages
