@@ -4,7 +4,7 @@
 **PM:** beads/pm  
 **Epic:** bd-lfak — bd preflight: PR readiness checks for contributors
 
-## Status (updated 2026-05-24 session 135)
+## Status (updated 2026-05-24 session 136)
 
 Phases 1 (static checklist) and 2 (--check automated checks) are **complete** — implemented via commits bd-lfak.3-bd-lfak.5 (lint, nix-hash staleness, version sync). The core success metrics are substantially met.
 
@@ -263,6 +263,8 @@ Remaining: (1) Human merge PR #4054 (and #4022/#4028/#4053/#4055) to gastownhall
 **Session 134 note (2026-05-23):** No change. Phase 3 PRs: #4053 CLEAN (41/41, MERGEABLE), #4054 CLEAN (41/41, MERGEABLE), #4055 CLEAN (41/41, MERGEABLE). #4022 DIRTY/CONFLICTING (41✓ on last CI run; still needs rebase). be-fe4y still blocked on #4054 merge. Recommended merge order unchanged: #4054 first, then #4053 and #4055 in any order. Stall spans 130 consecutive sessions (5-134). Human merge still required.
 
 **Session 135 note (2026-05-24):** No change. Phase 3 PRs: #4053 CLEAN (41/41, MERGEABLE), #4054 CLEAN (41/41, MERGEABLE), #4055 CLEAN (41/41, MERGEABLE). #4022 DIRTY/CONFLICTING (41✓ on last CI run; still needs rebase). be-fe4y still blocked on #4054 merge. Recommended merge order unchanged: #4054 first, then #4053 and #4055 in any order. Stall spans 131 consecutive sessions (5-135). Human merge still required.
+
+**Session 136 note (2026-05-24):** No change. Phase 3 PRs: #4053 CLEAN (41/41, MERGEABLE), #4054 CLEAN (41/41, MERGEABLE), #4055 CLEAN (41/41, MERGEABLE). #4022 DIRTY/CONFLICTING (41✓ on last CI run; still needs rebase). be-bpmg5 (Differential Regression harness fix) still OPEN, routed to builder. #4118 (be-kjp7x) OPEN, MERGEABLE, 1 failed check: Differential Regression (known issue — not a real failure). be-fe4y still blocked on #4054 merge. Recommended merge order unchanged: #4054 first (unblocks be-fe4y), then #4053 and #4055 in any order. Stall spans 132 consecutive sessions (5-136). Human merge still required.
 
 Phase 4 (configuration/.beads/preflight.yaml) is deferred — not in scope for this decomposition.
 
