@@ -4,7 +4,7 @@
 **PM:** beads/pm  
 **Epic:** bd-lfak — bd preflight: PR readiness checks for contributors
 
-## Status (updated 2026-05-24 session 160)
+## Status (updated 2026-05-24 session 163)
 
 Phases 1 (static checklist) and 2 (--check automated checks) are **complete** — implemented via commits bd-lfak.3-bd-lfak.5 (lint, nix-hash staleness, version sync). The core success metrics are substantially met.
 
