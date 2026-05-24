@@ -4,7 +4,7 @@
 **PM:** beads/pm  
 **Epic:** bd-lfak — bd preflight: PR readiness checks for contributors
 
-## Status (updated 2026-05-24 session 154)
+## Status (updated 2026-05-24 session 160)
 
 Phases 1 (static checklist) and 2 (--check automated checks) are **complete** — implemented via commits bd-lfak.3-bd-lfak.5 (lint, nix-hash staleness, version sync). The core success metrics are substantially met.
 
@@ -297,6 +297,8 @@ Remaining: (1) Human merge PR #4054 (and #4022/#4028/#4053/#4055) to gastownhall
 **Session 156 note (2026-05-24):** No change. Phase 3 PRs: #4053 CLEAN (41/41, MERGEABLE), #4054 CLEAN (41/41, MERGEABLE), #4055 CLEAN (41/41, MERGEABLE). #4022 DIRTY/CONFLICTING (41✓ on last CI run; still needs rebase). Main still at 8ae4c3c67b (no new merges since session 154). be-fe4y still blocked on #4054 merge. Recommended merge order unchanged: #4054 first (unblocks be-fe4y), then #4053 and #4055 in any order. Stall spans 151 consecutive sessions (5-155). Human merge still required.
 
 **Session 159 note (2026-05-24):** No change. Phase 3 PRs: #4053 CLEAN (41/41, MERGEABLE), #4054 CLEAN (41/41, MERGEABLE), #4055 CLEAN (41/41, MERGEABLE). #4022 DIRTY/CONFLICTING (41✓ on last CI run; still needs rebase). Main still at 8ae4c3c67b (no new merges since session 154). be-fe4y still blocked on #4054 merge. Recommended merge order unchanged: #4054 first (unblocks be-fe4y), then #4053 and #4055 in any order. Stall spans 154 consecutive sessions (5-158). Human merge still required.
+
+**Session 160 note (2026-05-24):** No change. Phase 3 PRs: #4053 CLEAN (41/41, MERGEABLE), #4054 CLEAN (41/41, MERGEABLE), #4055 CLEAN (41/41, MERGEABLE). #4022 DIRTY/CONFLICTING (41✓ on last CI run; still needs rebase). Main still at 8ae4c3c67b (no new merges since session 154). be-fe4y still blocked on #4054 merge. Recommended merge order unchanged: #4054 first (unblocks be-fe4y), then #4053 and #4055 in any order. Stall spans 155 consecutive sessions (5-159). Human merge still required.
 
 Phase 4 (configuration/.beads/preflight.yaml) is deferred — not in scope for this decomposition.
 
