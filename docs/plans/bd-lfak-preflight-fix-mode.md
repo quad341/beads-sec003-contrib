@@ -4,7 +4,7 @@
 **PM:** beads/pm  
 **Epic:** bd-lfak — bd preflight: PR readiness checks for contributors
 
-## Status (updated 2026-05-24 session 166)
+## Status (updated 2026-05-25 session 174)
 
 Phases 1 (static checklist) and 2 (--check automated checks) are **complete** — implemented via commits bd-lfak.3-bd-lfak.5 (lint, nix-hash staleness, version sync). The core success metrics are substantially met.
 
@@ -317,6 +317,8 @@ Remaining: (1) Human merge PR #4054 (and #4022/#4028/#4053/#4055) to gastownhall
 **Session 168 note (2026-05-24):** No change. Main still at 8ae4c3c67b. Phase 3 PRs: #4053 CLEAN (41/41, MERGEABLE), #4054 CLEAN (41/41, MERGEABLE), #4055 CLEAN (41/41 — CI pre-dates regression; do NOT merge until be-ovwiy fix is pushed). #4022 DIRTY/CONFLICTING (still needs rebase). be-ovwiy still OPEN, routed to beads/builder — fix double 'Error:' prefix in config.go:97. be-fe4y still blocked on #4054 merge. Recommended action: (1) builder fixes #4055 (be-ovwiy), (2) human merges #4054 first, then #4053 and fixed #4055. Stall spans 163 consecutive sessions (5-167). Human merge still required.
 
 **Session 171 note (2026-05-25):** Main advanced to f8b940016 (fix(create): commit labels during initial issue creation, #4149). be-ovwiy CLOSED — fix pushed to #4055 branch (commit 2d6548f64: "fix(config): remove double 'Error:' prefix from rejectProtectedConfigKey"). #4055 now CLEAN (43✓/0✗, CLEAN). #4053 and #4054: UNKNOWN mergeability (GitHub recalculating after main advance), 41✓ CI each — expect to resolve CLEAN shortly. #4022: UNKNOWN mergeability (GitHub recalculating), 41✓ CI. Recommended merge order unchanged: #4054 first (unblocks be-fe4y), then #4053 and #4055 in any order. Stall spans 167 consecutive sessions (5-170). Human merge still required.
+
+**Session 174 note (2026-05-25):** No change. Phase 3 PRs: #4053 CLEAN (41/41, MERGEABLE), #4054 CLEAN (41/41, MERGEABLE), #4055 CLEAN (43/43, MERGEABLE — incl. Regression Tests, fresh run 2026-05-25T01:56Z). #4022 DIRTY/CONFLICTING (not blocking Phase 3). Main still at f8b940016 (no new merges since session 171). be-fe4y still blocked on #4054 merge. Recommended merge order unchanged: #4054 first (unblocks be-fe4y), then #4053 and #4055 in any order. Stall spans 170 consecutive sessions (5-173). Human merge still required.
 
 Phase 4 (configuration/.beads/preflight.yaml) is deferred — not in scope for this decomposition.
 
