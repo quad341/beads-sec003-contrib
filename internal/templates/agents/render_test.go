@@ -519,3 +519,85 @@ func TestReplaceSectionWithOptsDetectsRemoteChange(t *testing.T) {
 		t.Error("replaced content should not contain 'bd dolt push' with HasRemote=false")
 	}
 }
+
+// TestStripDoltPushReferences_ExactThreeSpaceIndent verifies that the
+// session-completion code-block line "   bd dolt push\n" (3-space indent) is
+// removed, and only that exact form.
+func TestStripDoltPushReferences_ExactThreeSpaceIndent(t *testing.T) {
+	input := "   bd dolt push\n"
+	got := stripDoltPushReferences(input)
+	if got != "" {
+		t.Errorf("stripDoltPushReferences(%q) = %q, want empty string", input, got)
+	}
+}
+
+// TestStripDoltPushReferences_NonMatchingIndents guards against over-stripping:
+// 2-space and 4-space indented variants must NOT be removed.
+func TestStripDoltPushReferences_NonMatchingIndents(t *testing.T) {
+	cases := []struct {
+		name  string
+		input string
+	}{
+		{"2-space indent", "  bd dolt push\n"},
+		{"4-space indent", "    bd dolt push\n"},
+		{"no indent", "bd dolt push\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := stripDoltPushReferences(tc.input)
+			if got != tc.input {
+				t.Errorf("stripDoltPushReferences(%q) = %q, want unchanged %q", tc.input, got, tc.input)
+			}
+		})
+	}
+}
+
+// TestRenderSectionWithOptsNoPushTrue_OmitsPushFromSessionCompletion verifies
+// that NoPush=true removes the "bd dolt push" line from the Session Completion
+// block in both full and minimal profiles.
+func TestRenderSectionWithOptsNoPushTrue_OmitsPushFromSessionCompletion(t *testing.T) {
+	for _, profile := range []Profile{ProfileFull, ProfileMinimal} {
+		opts := RenderOpts{HasRemote: true, NoPush: true}
+		section := RenderSectionWithOpts(profile, opts)
+		if strings.Contains(section, "bd dolt push") {
+			t.Errorf("%s profile with NoPush=true should not contain 'bd dolt push'", profile)
+		}
+		// Other session-completion content must remain
+		if !strings.Contains(section, "git push") {
+			t.Errorf("%s profile with NoPush=true should still contain 'git push'", profile)
+		}
+	}
+}
+
+// TestRenderSectionWithOptsNoPushTrue_OmitsAutoSyncBullet verifies that the
+// Auto-Sync informational bullet is removed when NoPush=true (full profile only).
+func TestRenderSectionWithOptsNoPushTrue_OmitsAutoSyncBullet(t *testing.T) {
+	opts := RenderOpts{HasRemote: true, NoPush: true}
+	section := RenderSectionWithOpts(ProfileFull, opts)
+	bullet := "Use `bd dolt push`/`bd dolt pull` for remote sync"
+	if strings.Contains(section, bullet) {
+		t.Errorf("full profile with NoPush=true should not contain auto-sync bullet %q", bullet)
+	}
+}
+
+// TestRenderSectionWithOptsNoPushFalse_MatchesDefaultRenderOpts verifies
+// byte-for-byte that NoPush=false produces identical output to DefaultRenderOpts.
+func TestRenderSectionWithOptsNoPushFalse_MatchesDefaultRenderOpts(t *testing.T) {
+	for _, profile := range []Profile{ProfileFull, ProfileMinimal} {
+		withFalse := RenderSectionWithOpts(profile, RenderOpts{HasRemote: true, NoPush: false})
+		withDefault := RenderSectionWithOpts(profile, DefaultRenderOpts())
+		if withFalse != withDefault {
+			t.Errorf("%s: NoPush=false output differs from DefaultRenderOpts output", profile)
+		}
+	}
+}
+
+// TestRenderSectionWithOptsNoPushTrue_HasRemoteTrue_StillStrips verifies that
+// NoPush=true overrides HasRemote=true and still strips the push line.
+func TestRenderSectionWithOptsNoPushTrue_HasRemoteTrue_StillStrips(t *testing.T) {
+	opts := RenderOpts{HasRemote: true, NoPush: true}
+	section := RenderSectionWithOpts(ProfileFull, opts)
+	if strings.Contains(section, "bd dolt push") {
+		t.Error("NoPush=true + HasRemote=true should still strip 'bd dolt push'")
+	}
+}
