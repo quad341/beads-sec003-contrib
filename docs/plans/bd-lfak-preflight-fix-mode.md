@@ -334,6 +334,8 @@ Remaining: (1) Human merge PR #4054 (and #4022/#4028/#4053/#4055) to gastownhall
 
 **Session 183 note (2026-05-27):** No change. All 4 Phase 3 PRs still CLEAN/MERGEABLE: #4054 CLEAN (MERGEABLE, updated 2026-05-21T23:22Z), #4053 CLEAN (MERGEABLE, updated 2026-05-22T01:39Z), #4055 CLEAN (MERGEABLE, updated 2026-05-25T01:56Z), #4022 CLEAN (MERGEABLE, updated 2026-05-25T22:42Z). Main still at 6fc67e690 (no new merges since session 182). be-fe4y still OPEN, blocked on #4054 merge. Recommended merge order: #4054 first (unblocks be-fe4y), then #4053, #4055, #4022 in any order. Stall spans 179 consecutive sessions (5-183). Human merge still required.
 
+**Session 184 note (2026-05-28):** Main advanced from 6fc67e690 to ff2f6154ab1c (PR #4172: fix(hooks): bound prime and hook waits). #4053 and #4054 show UNKNOWN mergeability (GitHub recomputing after main advance), 41✓/0✗ each on last CI runs (2026-05-21). #4055 CLEAN (43/43, MERGEABLE, last updated 2026-05-25T01:56Z). #4022 CLEAN (43/43, MERGEABLE, last updated 2026-05-25T22:42Z). All 4 PRs expected to resolve CLEAN once GitHub finishes recomputing. be-fe4y still OPEN, blocked on #4054 merge. Recommended merge order: #4054 first (unblocks be-fe4y), then #4053, #4055, #4022 in any order. Stall spans 180 consecutive sessions (5-184). Human merge still required.
+
 Phase 4 (configuration/.beads/preflight.yaml) is deferred — not in scope for this decomposition.
 
 ## Work Packages
