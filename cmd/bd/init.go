@@ -2128,10 +2128,6 @@ func shouldConfigureInitDoltRemote(syncURL string, syncFromRemote, syncURLFromCo
 	return !localOnly && shouldWireInitRemote(syncURL, syncFromRemote, syncURLFromConfig, syncURLFromGitOrigin)
 }
 
-func isDoltLocalOnly() bool {
-	return config.GetBool("dolt.local-only")
-}
-
 func configureInitDoltRemote(ctx context.Context, store storage.DoltStorage, syncURL string, quiet bool) {
 	hasRemote, _ := store.HasRemote(ctx, "origin")
 	if !hasRemote {
