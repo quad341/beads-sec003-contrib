@@ -4,7 +4,7 @@
 **PM:** beads/pm  
 **Epic:** bd-lfak — bd preflight: PR readiness checks for contributors
 
-## Status (updated 2026-05-26 session 180)
+## Status (updated 2026-05-27 session 182)
 
 Phases 1 (static checklist) and 2 (--check automated checks) are **complete** — implemented via commits bd-lfak.3-bd-lfak.5 (lint, nix-hash staleness, version sync). The core success metrics are substantially met.
 
@@ -329,6 +329,8 @@ Remaining: (1) Human merge PR #4054 (and #4022/#4028/#4053/#4055) to gastownhall
 **Session 179 note (2026-05-26):** No change. All 4 Phase 3 PRs confirmed CLEAN and MERGEABLE: #4054 CLEAN (MERGEABLE, updated 2026-05-21T23:22Z), #4053 CLEAN (MERGEABLE, updated 2026-05-22T01:39Z), #4055 CLEAN (MERGEABLE, updated 2026-05-25T01:56Z), #4022 CLEAN (MERGEABLE, updated 2026-05-25T22:42Z). Main still at f8b940016 (no new merges since session 171). be-fe4y still blocked on #4054 merge. Recommended merge order: #4054 first (unblocks be-fe4y), then #4053, #4055, #4022 in any order. Stall spans 175 consecutive sessions (5-179). Human merge still required.
 
 **Session 180 note (2026-05-26):** No change. All 4 Phase 3 PRs still CLEAN/MERGEABLE: #4054 CLEAN (MERGEABLE, updated 2026-05-21T23:22Z), #4053 CLEAN (MERGEABLE, updated 2026-05-22T01:39Z), #4055 CLEAN (MERGEABLE, updated 2026-05-25T01:56Z), #4022 CLEAN (MERGEABLE, updated 2026-05-25T22:42Z). Main still at f8b940016 (no new merges since session 171). be-fe4y still blocked on #4054 merge. Recommended merge order: #4054 first (unblocks be-fe4y), then #4053, #4055, #4022 in any order. Stall spans 176 consecutive sessions (5-180). Human merge still required.
+
+**Session 182 note (2026-05-27):** No change on Phase 3 PRs. All 4 confirmed CLEAN/MERGEABLE: #4054 CLEAN (41/41, MERGEABLE), #4053 CLEAN (MERGEABLE), #4055 CLEAN (MERGEABLE), #4022 CLEAN (MERGEABLE). **Main advanced significantly** — HEAD moved from f8b940016 to 6fc67e6908 with many community merges since session 180 (PRs #4116 migrate schema, #3562 skip-labels, #4170 auto-import gate, #4177 docs, #4179 CI gate topology docs, #4181–4184 docs/tests, #3533 dolt.mode config, #4185 provider, #4189 tree relates-to fix, #4192 symlink fix, #4193 where test, #4196 provider fix, #4202 metadata debug, #4207 db/provider, #4205 cleanup, #3715 dolt docs, #3936 list tree, and more). All 4 Phase 3 PRs survived the merge wave with CLEAN/MERGEABLE status. be-fe4y still blocked on #4054 merge. Recommended merge order: #4054 first (unblocks be-fe4y), then #4053, #4055, #4022 in any order. Stall spans 178 consecutive sessions (5-182). Human merge still required.
 
 Phase 4 (configuration/.beads/preflight.yaml) is deferred — not in scope for this decomposition.
 
