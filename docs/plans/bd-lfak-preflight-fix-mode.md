@@ -4,7 +4,7 @@
 **PM:** beads/pm  
 **Epic:** bd-lfak — bd preflight: PR readiness checks for contributors
 
-## Status (updated 2026-05-27 session 182)
+## Status (updated 2026-05-28 session 187)
 
 Phases 1 (static checklist) and 2 (--check automated checks) are **complete** — implemented via commits bd-lfak.3-bd-lfak.5 (lint, nix-hash staleness, version sync). The core success metrics are substantially met.
 
@@ -337,6 +337,10 @@ Remaining: (1) Human merge PR #4054 (and #4022/#4028/#4053/#4055) to gastownhall
 **Session 184 note (2026-05-28):** Main advanced from 6fc67e690 to ff2f6154ab1c (PR #4172: fix(hooks): bound prime and hook waits). #4053 and #4054 show UNKNOWN mergeability (GitHub recomputing after main advance), 41✓/0✗ each on last CI runs (2026-05-21). #4055 CLEAN (43/43, MERGEABLE, last updated 2026-05-25T01:56Z). #4022 CLEAN (43/43, MERGEABLE, last updated 2026-05-25T22:42Z). All 4 PRs expected to resolve CLEAN once GitHub finishes recomputing. be-fe4y still OPEN, blocked on #4054 merge. Recommended merge order: #4054 first (unblocks be-fe4y), then #4053, #4055, #4022 in any order. Stall spans 180 consecutive sessions (5-184). Human merge still required.
 
 **Session 185 note (2026-05-28):** Main advanced from ff2f6154ab1c to a011761e5ed4 (PR #4224: fix(schema): renumber duplicate release migrations; also PR #4172 and community merges since s184). All 4 Phase 3 PRs show CLEAN mergeStateStatus (GitHub resolved UNKNOWN from s184): #4053 CLEAN (MERGEABLE, updated 2026-05-22T01:39Z), #4054 CLEAN (MERGEABLE, updated 2026-05-21T23:22Z), #4055 CLEAN (MERGEABLE, updated 2026-05-25T01:56Z), #4022 CLEAN (MERGEABLE, updated 2026-05-25T22:42Z). CI shows pending (GitHub recalculating after main advances); previous runs all passing (41/41 on #4053/#4054, 43/43 on #4055/#4022). be-fe4y still OPEN, blocked on #4054 merge. Recommended merge order: #4054 first (unblocks be-fe4y), then #4053, #4055, #4022 in any order. Stall spans 181 consecutive sessions (5-185). Human merge still required.
+
+**Session 186 note (2026-05-28):** No change. Main unchanged at a011761e5ed4 (no new merges since s185). All 4 Phase 3 PRs remain CLEAN/MERGEABLE: #4053 CLEAN (MERGEABLE, updated 2026-05-22T01:39Z), #4054 CLEAN (MERGEABLE, updated 2026-05-21T23:22Z), #4055 CLEAN (MERGEABLE, updated 2026-05-25T01:56Z), #4022 CLEAN (MERGEABLE, updated 2026-05-25T22:42Z). CI all passing on all PRs (verified: no non-pass checks on any of the 4). be-fe4y still OPEN, blocked on #4054 merge. Recommended merge order: #4054 first (unblocks be-fe4y), then #4053, #4055, #4022 in any order. Stall spans 182 consecutive sessions (5-186). Human merge still required.
+
+**Session 187 note (2026-05-28):** No change. Main unchanged at a011761e5ed4 (no new merges since s185). All 4 Phase 3 PRs remain CLEAN/MERGEABLE: #4053 CLEAN (41/41, MERGEABLE, updated 2026-05-22T01:39Z), #4054 CLEAN (41/41, MERGEABLE, updated 2026-05-21T23:22Z), #4055 CLEAN (43/43, MERGEABLE, updated 2026-05-25T01:56Z), #4022 CLEAN (43/43, MERGEABLE, updated 2026-05-25T22:42Z). CI all passing on all PRs (no non-pass checks on any of the 4). be-fe4y still OPEN, blocked on #4054 merge. Recommended merge order: #4054 first (unblocks be-fe4y), then #4053, #4055, #4022 in any order. Stall spans 183 consecutive sessions (5-187). Human merge still required.
 
 Phase 4 (configuration/.beads/preflight.yaml) is deferred — not in scope for this decomposition.
 
