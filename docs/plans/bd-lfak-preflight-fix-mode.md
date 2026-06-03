@@ -348,6 +348,8 @@ Remaining: (1) Human merge PR #4054 (and #4022/#4028/#4053/#4055) to gastownhall
 
 **Session 191 note (2026-05-28):** No change. Main still at a011761e5ed4 (no new merges since s185). All 4 Phase 3 PRs remain CLEAN/MERGEABLE: #4054 CLEAN (41/41, MERGEABLE, updated 2026-05-21T23:22Z), #4053 CLEAN (41/41, MERGEABLE, updated 2026-05-22T01:39Z), #4055 CLEAN (43/43, MERGEABLE, updated 2026-05-25T01:56Z), #4022 CLEAN (43/43, MERGEABLE, updated 2026-05-25T22:42Z). No new activity on any PR. be-fe4y still OPEN, blocked on #4054 merge. Recommended merge order: #4054 first (unblocks be-fe4y), then #4053, #4055, #4022 in any order. Stall spans 186 consecutive sessions (5-191). Human merge still required.
 
+**Session 193 note (2026-06-03):** **Main advanced significantly — a011761e5ed4 → fbcee6c6246c** (25 commits including 1.0.5 version bump, #4246 versioned-docs snapshot, and community PR wave). All 4 Phase 3 PRs still CLEAN/MERGEABLE/SUCCESS: #4054 CLEAN (41/41, updated 2026-05-21T23:22Z), #4053 CLEAN (41/41, updated 2026-05-22T01:39Z), #4055 CLEAN (43/43, updated 2026-05-25T01:56Z), #4022 CLEAN (43/43, updated 2026-05-25T22:42Z). be-fe4y no longer in bead DB (rotated). **NEW RISK: #4246 (snapshot versioned docs for 1.0.5) merged to main after these PRs were cut — if CI is re-triggered on #4053/#4054/#4055/#4022, doc-flags freshness will fail on version-1.0.5/cli-reference (merge-drift, same pattern as sessions 91-129 Dolt-2.0.6 window). Merge directly; do NOT re-trigger CI.** Stall spans 188 consecutive sessions (5-193). Human merge still required.
+
 Phase 4 (configuration/.beads/preflight.yaml) is deferred — not in scope for this decomposition.
 
 ## Work Packages
