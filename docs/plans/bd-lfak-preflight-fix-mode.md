@@ -4,13 +4,13 @@
 **PM:** beads/pm  
 **Epic:** bd-lfak — bd preflight: PR readiness checks for contributors
 
-## Status (updated 2026-05-28 session 189)
+## Status (updated 2026-06-06 session 195)
 
 Phases 1 (static checklist) and 2 (--check automated checks) are **complete** — implemented via commits bd-lfak.3-bd-lfak.5 (lint, nix-hash staleness, version sync). The core success metrics are substantially met.
 
 Phase 3 (`--fix` mode): **All implementation and test beads are CLOSED.** B1 (be-xra8) + B2 (be-roho) implementation in PR #4054 — review PASSED (CI 41/41, 2 non-blocking LOWs). **PR #4054 is OPEN, awaiting merge.** Deployer batch-processed all 5 queued PRs in session 4 (be-dknn, be-rqkw, be-i88i, be-ivuh, be-vd2t) — all gate PASS, mailed mayor. PRs #4022/#4028/#4053/#4054/#4055 ready to merge (no deployer write access to gastownhall/beads — human merge required). T1 (be-b6m9) tests complete on branch `tests/be-b6m9-preflight-fix` (pushed to fork). be-fe4y (submit test PR) open on beads/builder, blocked on #4054 merge.
 
-**Current PR snapshot (session 49):** #4022 CLEAN (41/41), #4053 CLEAN (41/41, reviewer-approved), #4054 CLEAN (41/41), #4055 CLEAN (41/41). #4028 DIRTY/CONFLICTING (needs rebase, 40/40 CI passes on last run). 4 of 5 PRs are merge-ready.
+**Current PR snapshot (session 195):** #4022 CLEAN, #4053 CLEAN, #4054 CLEAN, #4055 CLEAN — all MERGEABLE. #4028 MERGED (2026-06-05/06) — fork-detect contributor routing. 4 remaining PRs are merge-ready; no conflicts. Mailed mayor (gm-wisp-zr75wv) requesting merge or GC_MPR_ALLOW_UNMAINTAINED=1 authorization.
 
 **Session 9 note (2026-05-21):** Confirmed all 5 PRs are `mergeStateStatus=CLEAN` (no conflicts, all CI green). maintainer-pr-review skill refused: `gastownhall/beads` not in maintained-repos scope. Mailed mayor with two options: (1) merge PRs manually, or (2) authorize `GC_MPR_ALLOW_UNMAINTAINED=1` so skill can handle it. Stall now spans 5 consecutive sessions (5-9).
 
