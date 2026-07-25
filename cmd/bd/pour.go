@@ -52,6 +52,18 @@ Examples:
 	RunE:          runPour,
 }
 
+// attachNotProtoMessage builds the error and hint returned when --attach is
+// given an existing issue id rather than a proto. pour always creates a NEW
+// root and cannot attach to an issue that already exists (be-j2rcl): without
+// this, the refusal reads as "the gate is broken" rather than "wrong tool".
+func attachNotProtoMessage(attachID string) (msg, hint string) {
+	msg = fmt.Sprintf("--attach expects a proto id, got issue id %q.", attachID)
+	hint = "`mol pour` always creates a NEW root and cannot attach to an issue that\n" +
+		"already exists. To expand an EXISTING issue into a sub-workflow, use your\n" +
+		"workflow tool's attach-to-issue primitive instead."
+	return msg, hint
+}
+
 func runPour(cmd *cobra.Command, args []string) error {
 	CheckReadonly("pour")
 
@@ -153,7 +165,7 @@ func runPour(cmd *cobra.Command, args []string) error {
 			return HandleError("loading attachment %s: %v", attachID, err)
 		}
 		if !isProto(attachIssue) {
-			return HandleError("%s is not a proto (missing '%s' label)", attachID, MoleculeLabel)
+			return HandleErrorWithHint(attachNotProtoMessage(attachID))
 		}
 		attachSubgraph, err := loadTemplateSubgraph(ctx, store, attachID)
 		if err != nil {
