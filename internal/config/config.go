@@ -13,6 +13,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// v is a process-wide singleton, not per-call state. In the cmd/bd test
+// binary this means one test's BEADS_DIR/config.yaml can leak into a later
+// test if it doesn't restore env vars via t.Setenv or the tests race under
+// t.Parallel() — ResetForTesting() only helps tests that call it themselves.
+// Tracked in be-yjp4z; do not assume a passing narrow -run scope means the
+// full suite is clean.
 var v *viper.Viper
 
 // overriddenKeys tracks keys explicitly set via Set() at runtime, so
