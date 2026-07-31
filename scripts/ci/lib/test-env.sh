@@ -66,6 +66,8 @@ beads_test_env_enter() {
     unset BEADS_DOLT_SERVER_DATABASE
     unset BEADS_DOLT_SERVER_SOCKET
     unset BEADS_DOLT_PASSWORD
+    unset BEADS_BACKUP_ENABLED
+    unset BD_BACKUP_ENABLED
 
     if command -v dolt >/dev/null 2>&1; then
         dolt config --global --add user.name "beads-test" >/dev/null 2>&1 || true
