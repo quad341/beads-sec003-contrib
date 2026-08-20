@@ -141,11 +141,20 @@ func runCmd(t *testing.T, dir string, name string, args ...string) {
 	}
 }
 
-// runDoltSQL executes SQL via `dolt sql` CLI in the given directory.
+// runDoltSQL executes SQL via `dolt sql` CLI in the given directory. The
+// query is piped over stdin (the CLI's documented "dolt sql < script.sql"
+// form) rather than passed via -q: callers include schema.AllMigrationsSQL()
+// (~230KB of concatenated migration DDL as of 89 migrations), and a query
+// that size as a single argv element fits under this host's 2MB ARG_MAX but
+// is fragile across environments — GitHub Actions' containerized runners can
+// enforce a much tighter effective limit, producing "argument list too long"
+// (E2BIG) from the exec call itself. Piping via stdin removes the argv size
+// limit from the picture entirely, for queries of any size.
 func runDoltSQL(t *testing.T, dir, query string) {
 	t.Helper()
-	cmd := exec.Command("dolt", "sql", "-q", query)
+	cmd := exec.Command("dolt", "sql")
 	cmd.Dir = dir
+	cmd.Stdin = strings.NewReader(query)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("dolt sql failed in %s: %v\nQuery: %.200s...\nOutput: %s", dir, err, query, output)
 	}
