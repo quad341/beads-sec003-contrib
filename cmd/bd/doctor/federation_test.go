@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/steveyegge/beads/internal/configfile"
+	"github.com/steveyegge/beads/internal/doltserver"
 )
 
 func TestCheckFederationRemotesAPI_NonDoltBackend(t *testing.T) {
@@ -486,6 +487,33 @@ func TestDoltServerConfig_PopulatesFromConfig(t *testing.T) {
 	}
 	if result.ServerUser != "testuser" {
 		t.Errorf("expected ServerUser 'testuser', got %q", result.ServerUser)
+	}
+}
+
+// TestDoltServerConfig_PropagatesBeadsDir verifies doltServerConfig carries
+// BeadsDir onto the *dolt.Config it builds. Without it, productionPortReasons'
+// Rule 3 (internal/storage/dolt/store.go) -- which keys off cfg.BeadsDir plus
+// a real dolt-server.port file -- can never fire for any of federation.go's 7
+// internal dolt.New call sites, even though beadsDir is right there as a
+// doltServerConfig parameter (be-rl6tm).
+func TestDoltServerConfig_PropagatesBeadsDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	beadsDir := filepath.Join(tmpDir, ".beads")
+	doltDir := filepath.Join(beadsDir, "dolt")
+	if err := os.MkdirAll(doltDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(beadsDir, doltserver.PortFileName),
+		[]byte("12345"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result := doltServerConfig(beadsDir, doltDir)
+
+	if result.BeadsDir != beadsDir {
+		t.Errorf("expected BeadsDir %q, got %q -- productionPortReasons' Rule 3 "+
+			"(dolt-server.port) cannot fire without it", beadsDir, result.BeadsDir)
 	}
 }
 

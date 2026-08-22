@@ -30,7 +30,6 @@ const reproProdPort = "59999"
 // separate change to AD-01's documented contract -- see be-rl6tm, filed on
 // architect-6a's recommendation rather than guessed at here.
 func TestApplyConfigDefaults_TestModeBlocksNonDefaultProductionPort(t *testing.T) {
-	t.Skip("residual gap, not the gm-2g3g5r leak -- tracked in be-rl6tm")
 	beadsDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(beadsDir, "dolt-server.port"),
 		[]byte(reproProdPort), 0o644); err != nil {
@@ -68,14 +67,22 @@ func TestApplyConfigDefaults_TestModeBlocksNonDefaultProductionPort(t *testing.T
 // leaked dev servers. That path-derivation fix has already been considered
 // and rejected; don't re-propose it without a new argument.
 func TestProductionPortReasons_BlindWithoutBeadsDir(t *testing.T) {
-	t.Skip("residual gap, not the gm-2g3g5r leak -- tracked in be-rl6tm")
 	beadsDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(beadsDir, "dolt-server.port"),
 		[]byte(reproProdPort), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("BEADS_TEST_MODE", "1")
-	_ = os.Unsetenv("BEADS_TEST_SERVER") // suppression removed: the "obvious fix"
+	// t.Setenv, not os.Unsetenv: TestMain sets BEADS_TEST_SERVER=1 process-wide
+	// for the whole binary (every beads TestMain does -- see file comment
+	// above), and every other test in this package relies on that invariant
+	// holding for the rest of the run. A raw os.Unsetenv here would silence
+	// it permanently with no restore once this test actually executes,
+	// breaking unrelated tests that happen to run afterward. t.Setenv to ""
+	// is behaviorally identical for this test (every check in store.go is a
+	// strict == "1" comparison, so "" and unset both fail it) but restores
+	// the prior value via t.Cleanup when this test ends.
+	t.Setenv("BEADS_TEST_SERVER", "") // suppression removed: the "obvious fix"
 
 	// Exactly what beads.Open passes: Path set, BeadsDir empty.
 	cfg := &Config{Path: filepath.Join(beadsDir, "dolt"), ServerPort: 59999}
