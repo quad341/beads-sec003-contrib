@@ -101,20 +101,22 @@ func isTestDatabaseName(name string) bool {
 // flags cfg.ServerPort as a production port. An empty slice means the port
 // is not detected as production.
 //
-// Detection sources, in order:
-//  1. cfg.ServerPort == DefaultSQLPort (legacy default 3307). Unconditional —
-//     never suppressed by BEADS_TEST_SERVER=1. The well-known Dolt default
-//     port is the single highest-confidence production signal, and a
-//     dedicated test server opting out of the other heuristics still must
-//     not bind to it.
+// Detection sources, in order, all unconditional:
+//  1. cfg.ServerPort == DefaultSQLPort (legacy default 3307).
 //  2. BEADS_PRODUCTION_PORT env var, parsed to int, matches cfg.ServerPort.
 //  3. cfg.BeadsDir/dolt-server.port file present and contains cfg.ServerPort.
 //
-// Rules 2 and 3 are suppressed when BEADS_TEST_SERVER=1: they are
-// heuristics (an env var or an on-disk port file, either of which can be
-// stale or misconfigured) rather than the fixed default port, so an
-// operator's explicit opt-in into a dedicated test-server lane is honored
-// for those two only.
+// None of these rules are suppressed by BEADS_TEST_SERVER=1. This function
+// is only ever consulted under BEADS_TEST_MODE=1 (applyConfigDefaults, and
+// New's defense-in-depth panic check), so it never runs against real
+// production traffic — only test binaries. A legitimate dedicated test
+// server never trips Rule 2 or 3 by accident: this codebase's test
+// harnesses announce their port exclusively via BEADS_DOLT_SERVER_PORT /
+// BEADS_DOLT_PORT, never BEADS_PRODUCTION_PORT or a dolt-server.port file
+// under cfg.BeadsDir. The operator consent BEADS_TEST_SERVER=1 is meant to
+// express already has its own home: the database-name firewall in New
+// (isTestDatabaseName + its own independent BEADS_TEST_SERVER=1 opt-out),
+// which this function does not touch.
 //
 // Rule 3 deliberately does not fall back to filepath.Dir(cfg.Path) when
 // BeadsDir is empty — the port-resolution chain in applyConfigDefaults
@@ -135,13 +137,6 @@ func productionPortReasons(cfg *Config) []string {
 	if cfg.ServerPort == DefaultSQLPort {
 		reasons = append(reasons, fmt.Sprintf("port %d == DefaultSQLPort", cfg.ServerPort))
 	}
-	// Rules 2 and 3 are the suppressible heuristics: honor the operator's
-	// BEADS_TEST_SERVER=1 opt-in for a dedicated test server by skipping
-	// them. Rule 1 above is intentionally evaluated before this check and
-	// is never suppressed.
-	if os.Getenv("BEADS_TEST_SERVER") == "1" {
-		return reasons
-	}
 	if env := os.Getenv("BEADS_PRODUCTION_PORT"); env != "" {
 		if p, err := strconv.Atoi(env); err == nil && p > 0 && p == cfg.ServerPort {
 			reasons = append(reasons, fmt.Sprintf("BEADS_PRODUCTION_PORT=%d matches", p))
@@ -159,18 +154,9 @@ func productionPortReasons(cfg *Config) []string {
 // indicator. Pure at call time — port resolution itself happens earlier in
 // applyConfigDefaults; this helper only inspects already-resolved state.
 //
-// BEADS_TEST_SERVER=1 narrows detection to Rule 1 only (port ==
-// DefaultSQLPort): the operator has explicitly opted into the dedicated
-// test-server lane (e.g. a per-test container, an external test port), which
-// suppresses the BEADS_PRODUCTION_PORT and dolt-server.port heuristics
-// (Rules 2 and 3, see productionPortReasons). Rule 1 stays unconditional —
-// a test server must never bind to the well-known default port 3307,
-// opt-in or not. The database-name firewall in New is a separate AD-01
-// defense with its own independent BEADS_TEST_SERVER=1 opt-out; it is not
-// affected by this function.
-//
-// See productionPortReasons for the three detection sources and the
-// suppression rule.
+// All three rules apply unconditionally, including under BEADS_TEST_SERVER=1
+// — see productionPortReasons for why that opt-in does not suppress any of
+// them, and where the real test-server consent gate lives instead.
 func isProductionPort(cfg *Config) bool {
 	return len(productionPortReasons(cfg)) > 0
 }
@@ -1630,13 +1616,6 @@ func buildTestModeProductionPortPanic(cfg *Config) string {
 	var fixLines strings.Builder
 	fixLines.WriteString("    - point BEADS_DOLT_SERVER_PORT at a non-production port (test server)\n")
 	fixLines.WriteString("    - or use test helpers in internal/storage/dolt/testserver\n")
-	// BEADS_TEST_SERVER=1 does not suppress Rule 1 (port == DefaultSQLPort,
-	// see productionPortReasons) — only list it as a fix when the port
-	// itself isn't the reason this fired, so the message never claims an
-	// opt-in that would not actually resolve this panic.
-	if cfg.ServerPort != DefaultSQLPort {
-		fixLines.WriteString("    - or set BEADS_TEST_SERVER=1 on the spawned test server's env\n")
-	}
 	return fmt.Sprintf(
 		"refusing to connect: BEADS_TEST_MODE=1 but resolved server port is production\n\n"+
 			"  database: %s\n"+

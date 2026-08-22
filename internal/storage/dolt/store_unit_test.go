@@ -272,10 +272,9 @@ func TestApplyConfigDefaults_TestModeWithPort(t *testing.T) {
 // BEADS_DOLT_PORT=3307 from metadata.json, bypassing the test mode guard.
 //
 // AD-01 (be-c5p): port == DefaultSQLPort (3307) is never suppressed by
-// BEADS_TEST_SERVER=1 (see productionPortReasons Rule 1); only the
-// BEADS_PRODUCTION_PORT and dolt-server.port heuristics honor that opt-in.
-// This case covers the no-opt-in path (operator did NOT signal "I'm on a
-// test server"), where the guard must still force port 1. See
+// BEADS_TEST_SERVER=1 (see productionPortReasons Rule 1). This case covers
+// the no-opt-in path (operator did NOT signal "I'm on a test server"),
+// where the guard must still force port 1. See
 // TestApplyConfigDefaults_TestModeBlocksProdPort_EvenWithTestServerOptIn for
 // the opt-in case, which must reach the same outcome.
 func TestApplyConfigDefaults_TestModeBlocksProdPort(t *testing.T) {
@@ -317,10 +316,9 @@ func TestApplyConfigDefaults_TestModeBlocksProdPort(t *testing.T) {
 // verifies that BEADS_TEST_SERVER=1 does NOT suppress Rule 1 of
 // productionPortReasons (port == DefaultSQLPort): even with the operator's
 // dedicated-test-server opt-in set, port 3307 must still be forced to 1
-// under BEADS_TEST_MODE=1. Only the BEADS_PRODUCTION_PORT and
-// dolt-server.port heuristics (Rules 2 and 3) are suppressed by that
-// opt-in — the well-known default port is never suppressible, so a
-// dedicated test server must still not bind to it.
+// under BEADS_TEST_MODE=1. The well-known default port is never
+// suppressible by any opt-in, so a dedicated test server must still not
+// bind to it.
 func TestApplyConfigDefaults_TestModeBlocksProdPort_EvenWithTestServerOptIn(t *testing.T) {
 	origTestMode := os.Getenv("BEADS_TEST_MODE")
 	origPort := os.Getenv("BEADS_DOLT_PORT")

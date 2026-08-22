@@ -251,7 +251,23 @@ func EnsureDoltContainerForTestMain() error {
 // city, the production one (gm-2g3g5r). With no port resolvable,
 // applyConfigDefaults' BEADS_TEST_MODE guard forces port 1 and stores fail
 // closed instead of silently creating testdb_* on production.
+//
+// Before clearing, exports the ambient port (BEADS_DOLT_SERVER_PORT, falling
+// back to legacy BEADS_DOLT_PORT) as BEADS_PRODUCTION_PORT, unless an
+// operator already set one explicitly. This lets productionPortReasons' Rule
+// 2 (internal/storage/dolt/store.go) recognize the production port for any
+// *dolt.Config, including ones that never carry BeadsDir -- e.g. beads.Open
+// and doctor's doltServerConfig (be-rl6tm).
 func neutralizeAmbientDoltPort() {
+	if os.Getenv("BEADS_PRODUCTION_PORT") == "" {
+		ambient := os.Getenv("BEADS_DOLT_SERVER_PORT")
+		if ambient == "" {
+			ambient = os.Getenv("BEADS_DOLT_PORT")
+		}
+		if ambient != "" {
+			_ = os.Setenv("BEADS_PRODUCTION_PORT", ambient)
+		}
+	}
 	_ = os.Unsetenv("BEADS_DOLT_SERVER_PORT")
 	_ = os.Unsetenv("BEADS_DOLT_PORT")
 }

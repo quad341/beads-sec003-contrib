@@ -273,6 +273,13 @@ type (
 // Open opens a Dolt-backed beads database at the given path.
 // This always opens in embedded mode. Use OpenFromConfig to respect
 // server mode settings from metadata.json.
+//
+// Open builds its *dolt.Config directly (Path only) and bypasses
+// applyResolvedConfig entirely, so it has no production-port detection: the
+// BeadsDir-gated and BEADS_TEST_SERVER-suppressible checks in
+// productionPortReasons cannot see a server this way. Callers that need that
+// protection should use OpenFromConfig instead, which threads a real
+// beadsDir through and stays covered.
 func Open(ctx context.Context, dbPath string) (Storage, error) {
 	return dolt.New(ctx, &dolt.Config{Path: dbPath, CreateIfMissing: true})
 }

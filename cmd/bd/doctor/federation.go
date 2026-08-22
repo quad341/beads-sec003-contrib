@@ -31,6 +31,7 @@ func doltDatabaseName(beadsDir string) string {
 func doltServerConfig(beadsDir, doltPath string) *dolt.Config {
 	cfg := &dolt.Config{
 		Path:     doltPath,
+		BeadsDir: beadsDir,
 		ReadOnly: true,
 		Database: doltDatabaseName(beadsDir),
 	}

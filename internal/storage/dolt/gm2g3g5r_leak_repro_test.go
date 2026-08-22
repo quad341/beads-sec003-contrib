@@ -21,14 +21,12 @@ const reproProdPort = "59999"
 // residual gap, not the gm-2g3g5r leak itself: the leak's actual root cause
 // (EnsureDoltContainerForTestMain failing open on the ambient port) is fixed
 // and covered by TestEnsureDoltContainerForTestMain_NeutralizesAmbientPortOnFailure
-// in internal/testutil. This test bypasses that fix entirely -- it injects a
-// production port directly via env var to probe applyConfigDefaults /
-// productionPortReasons in isolation. Rule 1 of productionPortReasons only
-// recognises DefaultSQLPort (3307); Rule 3 (the dolt-server.port file) is the
-// only rule that can see a dynamic production port, and store.go:142-144
-// suppresses it whenever BEADS_TEST_SERVER=1. Widening that is a deliberate,
-// separate change to AD-01's documented contract -- see be-rl6tm, filed on
-// architect-6a's recommendation rather than guessed at here.
+// in internal/testutil. This test injects a production port directly via env
+// var to verify Rule 3 (dolt-server.port file) still catches it: an
+// operator's BEADS_TEST_SERVER=1 opt-in must fail closed if the resolved
+// port genuinely matches a known production port, even though DefaultSQLPort
+// (Rule 1) isn't involved. See productionPortReasons for why
+// BEADS_TEST_SERVER=1 no longer suppresses Rules 2/3.
 func TestApplyConfigDefaults_TestModeBlocksNonDefaultProductionPort(t *testing.T) {
 	beadsDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(beadsDir, "dolt-server.port"),
@@ -54,45 +52,32 @@ func TestApplyConfigDefaults_TestModeBlocksNonDefaultProductionPort(t *testing.T
 	}
 }
 
-// TestProductionPortReasons_BlindWithoutBeadsDir disproves the obvious fix.
-// Deleting the BEADS_TEST_SERVER early return is NOT sufficient: Rule 3 is
-// gated on cfg.BeadsDir != "", and the leaking call site --- beads.go:277
-// beads.Open -> dolt.New(&Config{Path: dbPath, CreateIfMissing: true}) ---
-// sets Path only. With BeadsDir empty the rule cannot fire even unsuppressed.
-//
-// Note for whoever picks up be-rl6tm: store.go:119-126 already explains why
-// Rule 3 does NOT fall back to filepath.Dir(cfg.Path) when BeadsDir is empty
-// -- test fixtures commonly set Path under /tmp with no real BeadsDir, and
-// deriving one would false-positive on stray dolt-server.port files from
-// leaked dev servers. That path-derivation fix has already been considered
-// and rejected; don't re-propose it without a new argument.
-func TestProductionPortReasons_BlindWithoutBeadsDir(t *testing.T) {
+// TestProductionPortReasons_CatchesBeadsDirlessViaProductionPortEnv verifies
+// Rule 2 (BEADS_PRODUCTION_PORT) catches a production port even when
+// cfg.BeadsDir is empty -- the shape beads.Open (beads.go:277) actually
+// produces, since it never threads a BeadsDir through. Rule 3 (the
+// dolt-server.port file) is gated on cfg.BeadsDir != "" and deliberately
+// does not fall back to filepath.Dir(cfg.Path) (store.go:119-126: test
+// fixtures commonly set Path under /tmp with no real BeadsDir, and deriving
+// one would false-positive on stray port files from leaked dev servers) --
+// so a BeadsDir-less config depends on Rule 2 alone. BEADS_PRODUCTION_PORT is
+// populated for real by neutralizeAmbientDoltPort on the container-failure
+// path (internal/testutil/testdoltserver.go); this test sets it directly to
+// isolate productionPortReasons from that plumbing.
+func TestProductionPortReasons_CatchesBeadsDirlessViaProductionPortEnv(t *testing.T) {
 	beadsDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(beadsDir, "dolt-server.port"),
 		[]byte(reproProdPort), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("BEADS_TEST_MODE", "1")
-	// t.Setenv, not os.Unsetenv: TestMain sets BEADS_TEST_SERVER=1 process-wide
-	// for the whole binary (every beads TestMain does -- see file comment
-	// above), and every other test in this package relies on that invariant
-	// holding for the rest of the run. A raw os.Unsetenv here would silence
-	// it permanently with no restore once this test actually executes,
-	// breaking unrelated tests that happen to run afterward. t.Setenv to ""
-	// is behaviorally identical for this test (every check in store.go is a
-	// strict == "1" comparison, so "" and unset both fail it) but restores
-	// the prior value via t.Cleanup when this test ends.
-	t.Setenv("BEADS_TEST_SERVER", "") // suppression removed: the "obvious fix"
+	t.Setenv("BEADS_PRODUCTION_PORT", reproProdPort)
 
 	// Exactly what beads.Open passes: Path set, BeadsDir empty.
 	cfg := &Config{Path: filepath.Join(beadsDir, "dolt"), ServerPort: 59999}
-	if reasons := productionPortReasons(cfg); len(reasons) != 0 {
-		t.Logf("Rule 3 fired without BeadsDir: %v", reasons)
-	} else {
-		t.Errorf("CONFIRMED BLIND SPOT: productionPortReasons returned no reasons "+
-			"for port %d even with BEADS_TEST_SERVER unset, because BeadsDir is "+
-			"empty (store.go:150). Removing the early return alone does not fix "+
-			"the beads.Open path.", cfg.ServerPort)
+	reasons := productionPortReasons(cfg)
+	if len(reasons) == 0 {
+		t.Errorf("want Rule 2 (BEADS_PRODUCTION_PORT) to catch port %d via env "+
+			"var even with BeadsDir empty; got no reasons", cfg.ServerPort)
 	}
 }
 
