@@ -1476,6 +1476,10 @@ var rootCmd = &cobra.Command{
 			DisableAutoStart: policy.disableAutoStart,
 			BeadsDir:         beadsDir,
 			LenientOpen:      isWorkingSetReconcileCommand(cmd),
+			// Classification-only read (GH#804), never strict --readonly or a
+			// preview: the store is genuinely writable underneath, so the
+			// lazy defer-wake sweep may still run (be-vbhpf).
+			ClassifiedRead: policy.readOnly && !readonlyMode && !previewMode,
 		}
 
 		// Load config to get database name and server connection settings.
