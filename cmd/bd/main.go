@@ -230,6 +230,27 @@ func effectiveRootStorePolicy(cmdName string, strictReadonly bool) rootStorePoli
 	}
 }
 
+// StrictReadonly reports whether the policy is strict --readonly (never
+// eligible for auto-start or the lazy defer-wake sweep), as opposed to an
+// ordinary command that is merely read-only by classification. This is the
+// single accessor both the embedded-store factory (cmd/bd/store_factory.go,
+// keyed off cfg.DisableAutoStart) and server mode's ClassifiedRead
+// derivation (classifiedRead, below) consult, so the two call sites cannot
+// silently drift apart.
+func (p rootStorePolicy) StrictReadonly() bool {
+	return p.disableAutoStart
+}
+
+// classifiedRead reports whether the store should be opened with
+// dolt.Config.ClassifiedRead set: the command is read-only purely by
+// classification (bd show, bd list, ...), not by strict --readonly or a
+// preview, so the store is genuinely writable underneath and the lazy
+// defer-wake sweep may still run (GH#804, be-vbhpf). Strict readonly and
+// preview are both never eligible, regardless of classification.
+func classifiedRead(policy rootStorePolicy, previewMode bool) bool {
+	return policy.readOnly && !policy.StrictReadonly() && !previewMode
+}
+
 // runsPostCommandMaintenance reports whether PersistentPostRunE should run the
 // post-command maintenance net — Dolt auto-commit, the tip-metadata commit,
 // auto-backup, auto-export and auto-push.
@@ -1680,8 +1701,10 @@ var rootCmd = &cobra.Command{
 			PoolReadTimeoutFallback: bulkLoadPoolReadTimeout(cmd),
 			// Classification-only read (GH#804), never strict --readonly or a
 			// preview: the store is genuinely writable underneath, so the
-			// lazy defer-wake sweep may still run (be-vbhpf).
-			ClassifiedRead: policy.readOnly && !readonlyMode && !previewMode,
+			// lazy defer-wake sweep may still run (be-vbhpf). Derived via
+			// classifiedRead so this agrees with the embedded-store factory's
+			// strict-mode signal by construction.
+			ClassifiedRead: classifiedRead(policy, previewMode),
 		}
 
 		// Load config to get database name and server connection settings.

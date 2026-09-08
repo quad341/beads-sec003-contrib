@@ -3330,10 +3330,14 @@ func (s *DoltStore) Path() string {
 }
 
 // IsReadOnly reports whether the store was opened in read-only mode. It is a
-// test-facing accessor: production read-only enforcement comes from the
-// read-only open mode itself (the readOnly field guards every write path), not
-// from callers consulting this method. Tests such as
-// TestDepRoutedTargetOpensReadOnly use it to assert that routed
+// test-facing accessor, not a write guard itself: on this type (server
+// mode), cfg.ReadOnly only skips open-time schema init, a few pull/merge
+// maintenance side effects, and the defer-wake sweep predicate
+// (deferWakeSweepEligible) — ordinary write transactions such as
+// withWriteTx, CreateIssue, and UpdateIssue never consult s.readOnly and are
+// not refused at this layer. (Embedded mode differs: its strict --readonly
+// open, embeddeddolt.OpenReadOnly, does genuinely refuse writes.) Tests such
+// as TestDepRoutedTargetOpensReadOnly use IsReadOnly to assert that routed
 // dependency/link target resolution opens a by-ID target read-only, so
 // resolving it never opens a foreign project writable or runs open-time
 // migrations into its history (bd-6dnrw.32, GH#3231).
