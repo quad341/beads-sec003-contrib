@@ -75,7 +75,7 @@ func TestEffectiveRootStorePolicy(t *testing.T) {
 // to the same "strict read-only" answer for every policy. Both must derive
 // strictness through the rootStorePolicy.StrictReadonly() accessor rather than
 // re-deriving it independently, so this test would catch future drift between
-// the two call sites (PR #6424 review, nit 4).
+// the two call sites.
 func TestStrictReadonlySharedAcrossEmbeddedAndServerPaths(t *testing.T) {
 	tests := []struct {
 		name           string
