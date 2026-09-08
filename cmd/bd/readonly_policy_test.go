@@ -69,6 +69,53 @@ func TestEffectiveRootStorePolicy(t *testing.T) {
 	}
 }
 
+// TestStrictReadonlySharedAcrossEmbeddedAndServerPaths pins the embedded-store
+// path (cmd/bd/store_factory.go keys strict-mode off cfg.DisableAutoStart) and
+// the server-mode path (the ClassifiedRead field, computed by classifiedRead)
+// to the same "strict read-only" answer for every policy. Both must derive
+// strictness through the rootStorePolicy.StrictReadonly() accessor rather than
+// re-deriving it independently, so this test would catch future drift between
+// the two call sites (PR #6424 review, nit 4).
+func TestStrictReadonlySharedAcrossEmbeddedAndServerPaths(t *testing.T) {
+	tests := []struct {
+		name           string
+		command        string
+		strictReadonly bool
+		previewMode    bool
+	}{
+		{name: "ordinary write command, no preview", command: "create"},
+		{name: "classified read command, no preview", command: "search"},
+		{name: "classified read command, preview", command: "search", previewMode: true},
+		{name: "strict readonly, classified command", command: "search", strictReadonly: true},
+		{name: "strict readonly, unclassified command", command: "create", strictReadonly: true},
+		{name: "strict readonly with preview", command: "search", strictReadonly: true, previewMode: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			policy := effectiveRootStorePolicy(tc.command, tc.strictReadonly)
+
+			// Embedded-store path (cmd/bd/store_factory.go:87): strict mode is
+			// cfg.DisableAutoStart, sourced directly from policy.disableAutoStart.
+			embeddedStrict := policy.disableAutoStart
+
+			if got := policy.StrictReadonly(); got != embeddedStrict {
+				t.Fatalf("StrictReadonly() = %v, want %v (policy.disableAutoStart)", got, embeddedStrict)
+			}
+
+			// Server-mode path: ClassifiedRead must never be eligible under a
+			// strict-readonly policy, and must otherwise track policy.readOnly
+			// and previewMode exactly like the embedded path's strict signal.
+			classified := classifiedRead(policy, tc.previewMode)
+			wantClassified := policy.readOnly && !embeddedStrict && !tc.previewMode
+			if classified != wantClassified {
+				t.Fatalf("classifiedRead(policy, previewMode=%v) = %v, want %v — embedded (disableAutoStart=%v) and server-mode ClassifiedRead derivations disagree",
+					tc.previewMode, classified, wantClassified, embeddedStrict)
+			}
+		})
+	}
+}
+
 type strictReadonlyPostRunStore struct {
 	storage.DoltStorage
 	metadataWrites int
