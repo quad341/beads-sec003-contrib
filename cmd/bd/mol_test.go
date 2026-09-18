@@ -2187,6 +2187,39 @@ func TestResolveCurrentMolecules_AllFlagBypass(t *testing.T) {
 	}
 }
 
+// TestMoleculesFoundHeader covers the round-2 review gap on be-pdcq4: the
+// --all bypass success path printed the resolved molecules with no "Found N
+// molecules in progress for <agent>:" header, unlike the zero-match path
+// which does label its output. moleculesFoundHeader must fire ONLY for the
+// case that actually bypassed the ambiguity refusal (allFlag && count > 1) —
+// a single explicit-ID lookup (count == 1) and the unrelated
+// findHookedMolecules multi-match fallback (count > 1, allFlag false, no
+// refusal ever applied) must both stay header-less, since neither is an
+// "--all bypass" and the hooked case isn't even "in progress" work.
+func TestMoleculesFoundHeader(t *testing.T) {
+	tests := []struct {
+		name    string
+		agent   string
+		allFlag bool
+		count   int
+		want    string
+	}{
+		{"all bypass with agent", "agent-x", true, 2, "Found 2 molecules in progress for agent-x:"},
+		{"all bypass without agent", "", true, 3, "Found 3 molecules in progress:"},
+		{"all flag but single match", "agent-x", true, 1, ""},
+		{"multiple matches without --all (hooked fallback)", "agent-x", false, 2, ""},
+		{"zero matches", "agent-x", true, 0, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := moleculesFoundHeader(tt.agent, tt.allFlag, tt.count)
+			if got != tt.want {
+				t.Errorf("moleculesFoundHeader(%q, %v, %d) = %q, want %q", tt.agent, tt.allFlag, tt.count, got, tt.want)
+			}
+		})
+	}
+}
+
 // TestResolveCurrentMolecules_StepFlagResolvesUnambiguously covers
 // exit_contract's "--step <step-id> flag added" case: it resolves the
 // molecule via findParentMolecule unambiguously, even when the agent has
