@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -70,6 +71,8 @@ Use --limit or --range to view specific steps:
 		forAgent, _ := cmd.Flags().GetString("for")
 		limit, _ := cmd.Flags().GetInt("limit")
 		rangeStr, _ := cmd.Flags().GetString("range")
+		allFlag, _ := cmd.Flags().GetBool("all")
+		stepFlag, _ := cmd.Flags().GetString("step")
 
 		agent := forAgent
 		if agent == "" {
@@ -77,7 +80,7 @@ Use --limit or --range to view specific steps:
 		}
 
 		if usesProxiedServer() {
-			return runMolCurrentProxiedServer(rootCtx, args, agent, limit, rangeStr)
+			return runMolCurrentProxiedServer(rootCtx, args, agent, limit, rangeStr, allFlag, stepFlag)
 		}
 
 		ctx := rootCtx
@@ -128,10 +131,14 @@ Use --limit or --range to view specific steps:
 
 			molecules = append(molecules, progress)
 		} else {
-			molecules = findInProgressMolecules(ctx, store, agent)
-
-			if len(molecules) == 0 {
-				molecules = findHookedMolecules(ctx, store, agent)
+			var err error
+			molecules, err = resolveCurrentMolecules(ctx, store, agent, allFlag, stepFlag)
+			if err != nil {
+				var ambigErr *ambiguousMoleculeError
+				if errors.As(err, &ambigErr) {
+					return HandleAmbiguousMoleculeError(ambigErr)
+				}
+				return HandleErrorRespectJSON("%v", err)
 			}
 
 			if len(molecules) == 0 {
@@ -243,8 +250,46 @@ func getMoleculeProgress(ctx context.Context, s molReader, moleculeID string) (*
 	return progress, nil
 }
 
-// findInProgressMolecules finds molecules with in_progress steps for an agent
-func findInProgressMolecules(ctx context.Context, s molReader, agent string) []*MoleculeProgress {
+// ambiguousMoleculeCandidate names one molecule that matched an otherwise
+// ambiguous "bd mol current" query, along with the specific in_progress step
+// that made it a match. Exported fields so cmd/bd/errors.go can render both
+// JSON (snake_case) and text output without reaching into unexported state.
+type ambiguousMoleculeCandidate struct {
+	MoleculeID    string
+	MoleculeTitle string
+	StepID        string
+	StepTitle     string
+}
+
+// ambiguousMoleculeError reports that "bd mol current" matched more than one
+// in_progress molecule for an agent, with no safe way to pick just one
+// (be-nyl33/be-myd44). Callers must pass --all to see every match or --step
+// to disambiguate to the molecule containing that specific step.
+type ambiguousMoleculeError struct {
+	Agent      string
+	Candidates []*ambiguousMoleculeCandidate
+}
+
+func (e *ambiguousMoleculeError) Error() string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "ambiguous molecule match")
+	if e.Agent != "" {
+		fmt.Fprintf(&b, " for %s", e.Agent)
+	}
+	fmt.Fprintf(&b, ": %d in-progress molecules found:\n", len(e.Candidates))
+	for _, c := range e.Candidates {
+		fmt.Fprintf(&b, "  %s (%s) — step %s: %s\n", c.MoleculeID, c.MoleculeTitle, c.StepID, c.StepTitle)
+	}
+	b.WriteString("Use --all to see every match, or --step <id> to select one.")
+	return b.String()
+}
+
+// findInProgressMoleculeCandidates finds molecules with in_progress steps for
+// an agent, returning both the molecule progress list and, index-aligned,
+// the specific step that made each molecule a candidate. The per-candidate
+// step detail lets an ambiguous multi-molecule match (be-nyl33) name every
+// candidate instead of silently returning molecules[0].
+func findInProgressMoleculeCandidates(ctx context.Context, s molReader, agent string) ([]*MoleculeProgress, []*ambiguousMoleculeCandidate) {
 	var inProgressIssues []*types.Issue
 
 	status := types.StatusInProgress
@@ -258,7 +303,7 @@ func findInProgressMolecules(ctx context.Context, s molReader, agent string) []*
 	}
 
 	if len(inProgressIssues) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	// Batch-find parent molecules for all in_progress issues (bd-hn4q)
@@ -269,6 +314,7 @@ func findInProgressMolecules(ctx context.Context, s molReader, agent string) []*
 	moleculeRoots := findParentMolecules(ctx, s, issueIDs)
 
 	moleculeMap := make(map[string]*MoleculeProgress)
+	stepMap := make(map[string]*types.Issue)
 	for _, issue := range inProgressIssues {
 		moleculeID := moleculeRoots[issue.ID]
 		if moleculeID == "" {
@@ -279,6 +325,7 @@ func findInProgressMolecules(ctx context.Context, s molReader, agent string) []*
 			progress, err := getMoleculeProgress(ctx, s, moleculeID)
 			if err == nil {
 				moleculeMap[moleculeID] = progress
+				stepMap[moleculeID] = issue
 			}
 		}
 	}
@@ -294,7 +341,57 @@ func findInProgressMolecules(ctx context.Context, s molReader, agent string) []*
 		return molecules[i].MoleculeID < molecules[j].MoleculeID
 	})
 
+	candidates := make([]*ambiguousMoleculeCandidate, len(molecules))
+	for i, mol := range molecules {
+		step := stepMap[mol.MoleculeID]
+		candidates[i] = &ambiguousMoleculeCandidate{
+			MoleculeID:    mol.MoleculeID,
+			MoleculeTitle: mol.MoleculeTitle,
+			StepID:        step.ID,
+			StepTitle:     step.Title,
+		}
+	}
+
+	return molecules, candidates
+}
+
+// findInProgressMolecules finds molecules with in_progress steps for an
+// agent. Thin wrapper over findInProgressMoleculeCandidates for callers that
+// don't need per-candidate step detail.
+func findInProgressMolecules(ctx context.Context, s molReader, agent string) []*MoleculeProgress {
+	molecules, _ := findInProgressMoleculeCandidates(ctx, s, agent)
 	return molecules
+}
+
+// resolveCurrentMolecules resolves the set of "current" molecules for an
+// agent when no explicit molecule ID was given on the command line. Refuses
+// to silently pick one candidate out of several in_progress matches
+// (be-nyl33/be-myd44): the caller must pass allFlag to see every match, or
+// stepFlag to resolve unambiguously to the molecule containing that step.
+func resolveCurrentMolecules(ctx context.Context, s molReader, agent string, allFlag bool, stepFlag string) ([]*MoleculeProgress, error) {
+	if stepFlag != "" {
+		moleculeID := findParentMolecule(ctx, s, stepFlag)
+		if moleculeID == "" {
+			return nil, fmt.Errorf("step '%s' is not part of a molecule", stepFlag)
+		}
+		progress, err := getMoleculeProgress(ctx, s, moleculeID)
+		if err != nil {
+			return nil, fmt.Errorf("loading molecule: %w", err)
+		}
+		return []*MoleculeProgress{progress}, nil
+	}
+
+	molecules, candidates := findInProgressMoleculeCandidates(ctx, s, agent)
+
+	if len(molecules) == 0 {
+		return findHookedMolecules(ctx, s, agent), nil
+	}
+
+	if len(molecules) > 1 && !allFlag {
+		return nil, &ambiguousMoleculeError{Agent: agent, Candidates: candidates}
+	}
+
+	return molecules, nil
 }
 
 // findHookedMolecules finds molecules bonded to hooked issues for an agent.
@@ -761,5 +858,7 @@ func init() {
 	molCurrentCmd.Flags().String("for", "", "Show molecules for a specific agent/assignee")
 	molCurrentCmd.Flags().Int("limit", 0, "Maximum number of steps to display (0 = auto, use 'all' threshold)")
 	molCurrentCmd.Flags().String("range", "", "Display specific step range (e.g., '1-50', '100-150')")
+	molCurrentCmd.Flags().Bool("all", false, "Show every in-progress molecule instead of refusing on an ambiguous match")
+	molCurrentCmd.Flags().String("step", "", "Resolve unambiguously to the molecule containing this step ID")
 	molCmd.AddCommand(molCurrentCmd)
 }

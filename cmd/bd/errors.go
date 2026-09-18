@@ -106,6 +106,42 @@ func HandleProxyCapabilityError(err error) error {
 	return &exitError{Code: code}
 }
 
+func buildJSONAmbiguousMoleculeError(e *ambiguousMoleculeError) interface{} {
+	candidates := make([]map[string]interface{}, len(e.Candidates))
+	for i, c := range e.Candidates {
+		candidates[i] = map[string]interface{}{
+			"molecule_id":    c.MoleculeID,
+			"molecule_title": c.MoleculeTitle,
+			"step_id":        c.StepID,
+			"step_title":     c.StepTitle,
+		}
+	}
+	inner := map[string]interface{}{
+		"error":      e.Error(),
+		"code":       "ambiguous_molecule",
+		"candidates": candidates,
+	}
+	if jsonEnvelopeEnabled() {
+		return map[string]interface{}{"schema_version": JSONSchemaVersion, "data": inner}
+	}
+	inner["schema_version"] = JSONSchemaVersion
+	return inner
+}
+
+// HandleAmbiguousMoleculeError renders a "bd mol current" ambiguous-match
+// refusal (be-nyl33/be-myd44) while preserving the normal text/JSON
+// front-door conventions, modeled on HandleProxyCapabilityError.
+func HandleAmbiguousMoleculeError(e *ambiguousMoleculeError) error {
+	if jsonOutput {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(buildJSONAmbiguousMoleculeError(e))
+	} else {
+		fmt.Fprintf(os.Stderr, "Error: %s\n", e.Error())
+	}
+	return &exitError{Code: 1}
+}
+
 func jsonStderrError(message, hint string) {
 	encoder := json.NewEncoder(os.Stderr)
 	encoder.SetIndent("", "  ")

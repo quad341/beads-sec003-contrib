@@ -179,7 +179,7 @@ func runMolShowProxiedServer(ctx context.Context, arg string) error {
 	return showMolecule(subgraph)
 }
 
-func runMolCurrentProxiedServer(ctx context.Context, args []string, agent string, limit int, rangeStr string) error {
+func runMolCurrentProxiedServer(ctx context.Context, args []string, agent string, limit int, rangeStr string, allFlag bool, stepFlag string) error {
 	uw, err := proxiedOpenReadUOW(ctx)
 	if err != nil {
 		return err
@@ -225,9 +225,13 @@ func runMolCurrentProxiedServer(ctx context.Context, args []string, agent string
 		}
 		molecules = append(molecules, progress)
 	} else {
-		molecules = findInProgressMolecules(ctx, r, agent)
-		if len(molecules) == 0 {
-			molecules = findHookedMolecules(ctx, r, agent)
+		molecules, err = resolveCurrentMolecules(ctx, r, agent, allFlag, stepFlag)
+		if err != nil {
+			var ambigErr *ambiguousMoleculeError
+			if errors.As(err, &ambigErr) {
+				return HandleAmbiguousMoleculeError(ambigErr)
+			}
+			return HandleErrorRespectJSON("%v", err)
 		}
 		if len(molecules) == 0 {
 			if jsonOutput {
