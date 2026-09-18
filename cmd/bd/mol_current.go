@@ -161,6 +161,10 @@ Use --limit or --range to view specific steps:
 			return outputJSON(molecules)
 		}
 
+		if header := moleculesFoundHeader(agent, allFlag, len(molecules)); header != "" {
+			fmt.Println(header)
+		}
+
 		for i, mol := range molecules {
 			if i > 0 {
 				fmt.Println()
@@ -392,6 +396,25 @@ func resolveCurrentMolecules(ctx context.Context, s molReader, agent string, all
 	}
 
 	return molecules, nil
+}
+
+// moleculesFoundHeader returns the human-mode "Found N molecules in
+// progress for <agent>:" header for the --all bypass success path
+// (be-pdcq4 round 2): callers print it, when non-empty, right before the
+// per-molecule listing. It only fires for the case that actually bypassed
+// the ambiguity refusal — allFlag set and more than one molecule resolved —
+// so a single explicit-ID lookup or an unambiguous single match stays
+// header-less, and so does the unrelated findHookedMolecules multi-match
+// fallback (which never goes through the refusal at all, and isn't
+// "in progress" work). Returns "" when no header should print.
+func moleculesFoundHeader(agent string, allFlag bool, count int) string {
+	if !allFlag || count <= 1 {
+		return ""
+	}
+	if agent != "" {
+		return fmt.Sprintf("Found %d molecules in progress for %s:", count, agent)
+	}
+	return fmt.Sprintf("Found %d molecules in progress:", count)
 }
 
 // findHookedMolecules finds molecules bonded to hooked issues for an agent.

@@ -252,6 +252,9 @@ func runMolCurrentProxiedServer(ctx context.Context, args []string, agent string
 	if jsonOutput {
 		return outputJSON(molecules)
 	}
+	if header := moleculesFoundHeader(agent, allFlag, len(molecules)); header != "" {
+		fmt.Println(header)
+	}
 	for i, mol := range molecules {
 		if i > 0 {
 			fmt.Println()
