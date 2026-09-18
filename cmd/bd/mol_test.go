@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -1960,6 +1961,354 @@ func TestFindHookedMolecules(t *testing.T) {
 	molecules = findHookedMolecules(ctx, s, "")
 	if len(molecules) != 1 {
 		t.Errorf("findHookedMolecules('') got %d molecules, want 1", len(molecules))
+	}
+}
+
+// --- be-myd44: refuse ambiguous multi-molecule match instead of silently
+// returning one ---
+//
+// findInProgressMolecules previously returned every in-progress molecule for
+// an agent with no signal to the caller that there was more than one; "bd mol
+// current" picked molecules[0] silently (be-nyl33). These tests pin the fix
+// at the molReader boundary: both cmd/bd/mol_current.go's embedded-store RunE
+// and cmd/bd/mol_proxied_server.go's runMolCurrentProxiedServer call the same
+// resolveCurrentMolecules helper against a molReader (confirmed in
+// cmd/bd/mol_port.go: the embedded store and uowMolReader both implement it,
+// and every molecule-resolution function here already takes s molReader, not
+// a concrete type) — so proving the fix once against the dolt-backed test
+// store proves it for both callers without a separate proxied-server/UOW
+// integration test.
+
+// createTestMoleculeStep creates a molecule root (bare epic) with one child
+// step of the given status/assignee, parented via a parent-child dependency.
+// Returns the root and step issues.
+func createTestMoleculeStep(t *testing.T, ctx context.Context, s *dolt.DoltStore, moleculeTitle, stepTitle, assignee string, status types.Status) (*types.Issue, *types.Issue) {
+	t.Helper()
+	root := &types.Issue{
+		Title:     moleculeTitle,
+		Status:    types.StatusOpen,
+		Priority:  1,
+		IssueType: types.TypeEpic,
+	}
+	if err := s.CreateIssue(ctx, root, "test"); err != nil {
+		t.Fatalf("Failed to create molecule root: %v", err)
+	}
+
+	step := &types.Issue{
+		Title:     stepTitle,
+		Status:    status,
+		Priority:  2,
+		IssueType: types.TypeTask,
+		Assignee:  assignee,
+	}
+	if err := s.CreateIssue(ctx, step, "test"); err != nil {
+		t.Fatalf("Failed to create step: %v", err)
+	}
+	if err := s.AddDependency(ctx, &types.Dependency{
+		IssueID:     step.ID,
+		DependsOnID: root.ID,
+		Type:        types.DepParentChild,
+	}, "test"); err != nil {
+		t.Fatalf("Failed to add parent-child: %v", err)
+	}
+	return root, step
+}
+
+// TestFindInProgressMoleculeCandidates_MultipleMatches covers exit_contract's
+// ">1 match" case at the data-gathering layer: 2+ distinct in-progress
+// molecules for one agent must come back as index-aligned candidates naming
+// the specific assignee-matched step that made each molecule a candidate —
+// not just a bare slice of molecules with no way for the caller to tell
+// there was more than one match, or which step justified each one.
+func TestFindInProgressMoleculeCandidates_MultipleMatches(t *testing.T) {
+	ctx := context.Background()
+	dbPath := t.TempDir() + "/test.db"
+	s, err := dolt.New(ctx, &dolt.Config{Path: dbPath})
+	if err != nil {
+		t.Skipf("skipping: Dolt server not available: %v", err)
+	}
+	defer s.Close()
+	if err := s.SetConfig(ctx, "issue_prefix", "test"); err != nil {
+		t.Fatalf("Failed to set config: %v", err)
+	}
+
+	rootA, stepA := createTestMoleculeStep(t, ctx, s, "Molecule A", "Step A1", "agent-x", types.StatusInProgress)
+	rootB, stepB := createTestMoleculeStep(t, ctx, s, "Molecule B", "Step B1", "agent-x", types.StatusInProgress)
+
+	molecules, candidates := findInProgressMoleculeCandidates(ctx, s, "agent-x")
+	if len(molecules) != 2 {
+		t.Fatalf("findInProgressMoleculeCandidates() got %d molecules, want 2", len(molecules))
+	}
+	if len(candidates) != 2 {
+		t.Fatalf("findInProgressMoleculeCandidates() got %d candidates, want 2", len(candidates))
+	}
+
+	wantStep := map[string]*types.Issue{rootA.ID: stepA, rootB.ID: stepB}
+	wantTitle := map[string]string{rootA.ID: rootA.Title, rootB.ID: rootB.Title}
+	for i, mol := range molecules {
+		cand := candidates[i]
+		if cand.MoleculeID != mol.MoleculeID {
+			t.Errorf("candidates[%d].MoleculeID = %q, want %q (index-aligned with molecules)", i, cand.MoleculeID, mol.MoleculeID)
+		}
+		step, ok := wantStep[mol.MoleculeID]
+		if !ok {
+			t.Fatalf("unexpected molecule ID %q", mol.MoleculeID)
+		}
+		if cand.StepID != step.ID {
+			t.Errorf("candidates[%d].StepID = %q, want %q", i, cand.StepID, step.ID)
+		}
+		if cand.StepTitle != step.Title {
+			t.Errorf("candidates[%d].StepTitle = %q, want %q", i, cand.StepTitle, step.Title)
+		}
+		if cand.MoleculeTitle != wantTitle[mol.MoleculeID] {
+			t.Errorf("candidates[%d].MoleculeTitle = %q, want %q", i, cand.MoleculeTitle, wantTitle[mol.MoleculeID])
+		}
+	}
+
+	// findInProgressMolecules must remain a thin backward-compatible wrapper.
+	molOnly := findInProgressMolecules(ctx, s, "agent-x")
+	if len(molOnly) != 2 {
+		t.Errorf("findInProgressMolecules() got %d molecules, want 2", len(molOnly))
+	}
+}
+
+// TestResolveCurrentMolecules_ZeroAndOneMatchUnchanged covers exit_contract's
+// "0 matches" / "1 match" cases: resolveCurrentMolecules must not change
+// behavior for either — no error, same molecules a bare call would return
+// today.
+func TestResolveCurrentMolecules_ZeroAndOneMatchUnchanged(t *testing.T) {
+	ctx := context.Background()
+	dbPath := t.TempDir() + "/test.db"
+	s, err := dolt.New(ctx, &dolt.Config{Path: dbPath})
+	if err != nil {
+		t.Skipf("skipping: Dolt server not available: %v", err)
+	}
+	defer s.Close()
+	if err := s.SetConfig(ctx, "issue_prefix", "test"); err != nil {
+		t.Fatalf("Failed to set config: %v", err)
+	}
+
+	t.Run("zero matches", func(t *testing.T) {
+		molecules, err := resolveCurrentMolecules(ctx, s, "nobody-agent", false, "")
+		if err != nil {
+			t.Fatalf("resolveCurrentMolecules() unexpected error: %v", err)
+		}
+		if len(molecules) != 0 {
+			t.Errorf("resolveCurrentMolecules() got %d molecules, want 0", len(molecules))
+		}
+	})
+
+	t.Run("one match", func(t *testing.T) {
+		root, _ := createTestMoleculeStep(t, ctx, s, "Solo Molecule", "Solo Step", "solo-agent", types.StatusInProgress)
+
+		molecules, err := resolveCurrentMolecules(ctx, s, "solo-agent", false, "")
+		if err != nil {
+			t.Fatalf("resolveCurrentMolecules() unexpected error: %v", err)
+		}
+		if len(molecules) != 1 {
+			t.Fatalf("resolveCurrentMolecules() got %d molecules, want 1", len(molecules))
+		}
+		if molecules[0].MoleculeID != root.ID {
+			t.Errorf("resolveCurrentMolecules() molecule = %q, want %q", molecules[0].MoleculeID, root.ID)
+		}
+	})
+}
+
+// TestResolveCurrentMolecules_AmbiguousRefusal covers exit_contract's ">1
+// match, --all NOT passed" case: refuse via a typed error naming every
+// candidate, rather than silently returning molecules[0].
+func TestResolveCurrentMolecules_AmbiguousRefusal(t *testing.T) {
+	ctx := context.Background()
+	dbPath := t.TempDir() + "/test.db"
+	s, err := dolt.New(ctx, &dolt.Config{Path: dbPath})
+	if err != nil {
+		t.Skipf("skipping: Dolt server not available: %v", err)
+	}
+	defer s.Close()
+	if err := s.SetConfig(ctx, "issue_prefix", "test"); err != nil {
+		t.Fatalf("Failed to set config: %v", err)
+	}
+
+	rootA, stepA := createTestMoleculeStep(t, ctx, s, "Molecule A", "Step A1", "agent-x", types.StatusInProgress)
+	rootB, stepB := createTestMoleculeStep(t, ctx, s, "Molecule B", "Step B1", "agent-x", types.StatusInProgress)
+
+	molecules, err := resolveCurrentMolecules(ctx, s, "agent-x", false, "")
+	if molecules != nil {
+		t.Errorf("resolveCurrentMolecules() got %d molecules on ambiguous match, want nil", len(molecules))
+	}
+	if err == nil {
+		t.Fatal("resolveCurrentMolecules() got nil error on ambiguous match, want *ambiguousMoleculeError")
+	}
+
+	var ambigErr *ambiguousMoleculeError
+	if !errors.As(err, &ambigErr) {
+		t.Fatalf("resolveCurrentMolecules() error = %v (%T), want *ambiguousMoleculeError", err, err)
+	}
+	if len(ambigErr.Candidates) != 2 {
+		t.Fatalf("ambiguousMoleculeError has %d candidates, want 2", len(ambigErr.Candidates))
+	}
+
+	gotSteps := map[string]string{}
+	for _, c := range ambigErr.Candidates {
+		gotSteps[c.MoleculeID] = c.StepID
+	}
+	if gotSteps[rootA.ID] != stepA.ID {
+		t.Errorf("candidate step for molecule A = %q, want %q", gotSteps[rootA.ID], stepA.ID)
+	}
+	if gotSteps[rootB.ID] != stepB.ID {
+		t.Errorf("candidate step for molecule B = %q, want %q", gotSteps[rootB.ID], stepB.ID)
+	}
+}
+
+// TestResolveCurrentMolecules_AllFlagBypass covers exit_contract's "--all
+// flag added" case: --all bypasses the refusal and returns every match, same
+// N-shape output as the pre-fix bare call.
+func TestResolveCurrentMolecules_AllFlagBypass(t *testing.T) {
+	ctx := context.Background()
+	dbPath := t.TempDir() + "/test.db"
+	s, err := dolt.New(ctx, &dolt.Config{Path: dbPath})
+	if err != nil {
+		t.Skipf("skipping: Dolt server not available: %v", err)
+	}
+	defer s.Close()
+	if err := s.SetConfig(ctx, "issue_prefix", "test"); err != nil {
+		t.Fatalf("Failed to set config: %v", err)
+	}
+
+	createTestMoleculeStep(t, ctx, s, "Molecule A", "Step A1", "agent-x", types.StatusInProgress)
+	createTestMoleculeStep(t, ctx, s, "Molecule B", "Step B1", "agent-x", types.StatusInProgress)
+
+	molecules, err := resolveCurrentMolecules(ctx, s, "agent-x", true, "")
+	if err != nil {
+		t.Fatalf("resolveCurrentMolecules(--all) unexpected error: %v", err)
+	}
+	if len(molecules) != 2 {
+		t.Fatalf("resolveCurrentMolecules(--all) got %d molecules, want 2", len(molecules))
+	}
+}
+
+// TestResolveCurrentMolecules_StepFlagResolvesUnambiguously covers
+// exit_contract's "--step <step-id> flag added" case: it resolves the
+// molecule via findParentMolecule unambiguously, even when the agent has
+// other in-progress molecules that would otherwise trigger the refusal.
+func TestResolveCurrentMolecules_StepFlagResolvesUnambiguously(t *testing.T) {
+	ctx := context.Background()
+	dbPath := t.TempDir() + "/test.db"
+	s, err := dolt.New(ctx, &dolt.Config{Path: dbPath})
+	if err != nil {
+		t.Skipf("skipping: Dolt server not available: %v", err)
+	}
+	defer s.Close()
+	if err := s.SetConfig(ctx, "issue_prefix", "test"); err != nil {
+		t.Fatalf("Failed to set config: %v", err)
+	}
+
+	rootA, stepA := createTestMoleculeStep(t, ctx, s, "Molecule A", "Step A1", "agent-x", types.StatusInProgress)
+	createTestMoleculeStep(t, ctx, s, "Molecule B", "Step B1", "agent-x", types.StatusInProgress)
+
+	molecules, err := resolveCurrentMolecules(ctx, s, "agent-x", false, stepA.ID)
+	if err != nil {
+		t.Fatalf("resolveCurrentMolecules(--step) unexpected error: %v", err)
+	}
+	if len(molecules) != 1 {
+		t.Fatalf("resolveCurrentMolecules(--step) got %d molecules, want 1", len(molecules))
+	}
+	if molecules[0].MoleculeID != rootA.ID {
+		t.Errorf("resolveCurrentMolecules(--step) molecule = %q, want %q", molecules[0].MoleculeID, rootA.ID)
+	}
+}
+
+// TestResolveCurrentMolecules_MultiAgentMoleculeUsesOwnStep covers
+// exit_contract's "multi-agent-molecule test" case: when a single molecule
+// has in-progress steps belonging to two different agents, each agent's
+// query must resolve to their OWN step as the match — never
+// MoleculeProgress.CurrentStep, which getMoleculeProgress sets from the last
+// in_progress issue encountered while walking the whole subgraph regardless
+// of assignee, and so can silently name a different agent's step depending
+// on iteration order. Asking for each agent in turn on the SAME molecule
+// must never produce the other agent's step id.
+func TestResolveCurrentMolecules_MultiAgentMoleculeUsesOwnStep(t *testing.T) {
+	ctx := context.Background()
+	dbPath := t.TempDir() + "/test.db"
+	s, err := dolt.New(ctx, &dolt.Config{Path: dbPath})
+	if err != nil {
+		t.Skipf("skipping: Dolt server not available: %v", err)
+	}
+	defer s.Close()
+	if err := s.SetConfig(ctx, "issue_prefix", "test"); err != nil {
+		t.Fatalf("Failed to set config: %v", err)
+	}
+
+	root := &types.Issue{
+		Title:     "Shared Molecule",
+		Status:    types.StatusOpen,
+		Priority:  1,
+		IssueType: types.TypeEpic,
+	}
+	if err := s.CreateIssue(ctx, root, "test"); err != nil {
+		t.Fatalf("Failed to create molecule root: %v", err)
+	}
+
+	step1 := &types.Issue{
+		Title:     "Agent 1's step",
+		Status:    types.StatusInProgress,
+		Priority:  2,
+		IssueType: types.TypeTask,
+		Assignee:  "agent-1",
+	}
+	step2 := &types.Issue{
+		Title:     "Agent 2's step",
+		Status:    types.StatusInProgress,
+		Priority:  2,
+		IssueType: types.TypeTask,
+		Assignee:  "agent-2",
+	}
+	for _, step := range []*types.Issue{step1, step2} {
+		if err := s.CreateIssue(ctx, step, "test"); err != nil {
+			t.Fatalf("Failed to create step: %v", err)
+		}
+		if err := s.AddDependency(ctx, &types.Dependency{
+			IssueID:     step.ID,
+			DependsOnID: root.ID,
+			Type:        types.DepParentChild,
+		}, "test"); err != nil {
+			t.Fatalf("Failed to add parent-child: %v", err)
+		}
+	}
+
+	for _, tc := range []struct {
+		agent    string
+		wantStep *types.Issue
+	}{
+		{"agent-1", step1},
+		{"agent-2", step2},
+	} {
+		t.Run(tc.agent, func(t *testing.T) {
+			candidateMolecules, candidates := findInProgressMoleculeCandidates(ctx, s, tc.agent)
+			if len(candidateMolecules) != 1 {
+				t.Fatalf("findInProgressMoleculeCandidates(%s) got %d molecules, want 1", tc.agent, len(candidateMolecules))
+			}
+			if len(candidates) != 1 {
+				t.Fatalf("findInProgressMoleculeCandidates(%s) got %d candidates, want 1", tc.agent, len(candidates))
+			}
+			if candidates[0].StepID != tc.wantStep.ID {
+				t.Errorf("candidate step for %s = %q, want %q (own step, never the other agent's)", tc.agent, candidates[0].StepID, tc.wantStep.ID)
+			}
+
+			// resolveCurrentMolecules must resolve without ambiguity: only one
+			// molecule matches this agent, even though the molecule as a whole
+			// has two different agents' in-progress steps.
+			molecules, err := resolveCurrentMolecules(ctx, s, tc.agent, false, "")
+			if err != nil {
+				t.Fatalf("resolveCurrentMolecules(%s) unexpected error: %v", tc.agent, err)
+			}
+			if len(molecules) != 1 {
+				t.Fatalf("resolveCurrentMolecules(%s) got %d molecules, want 1", tc.agent, len(molecules))
+			}
+			if molecules[0].MoleculeID != root.ID {
+				t.Errorf("resolveCurrentMolecules(%s) molecule = %q, want %q", tc.agent, molecules[0].MoleculeID, root.ID)
+			}
+		})
 	}
 }
 
