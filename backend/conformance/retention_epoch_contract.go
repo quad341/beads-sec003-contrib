@@ -817,19 +817,151 @@ func RunAnEpochBumpIsTriggeredOnlyByRestoreReinitOrSchemeChange(t *testing.T, ct
 	}
 }
 
-// RunEpochBumpVoidsOnlyAddressesOfVersionsNoLongerServed pins R20-n — "Rev7
-// tightening... the clause most likely to be gotten wrong" in the
-// architecture doc's own words. A prior-epoch Address goes
-// GoneReorganization UNLESS the backend still serves that Version, in which
-// case it must stay Live AND additionally report the Address it now
-// resolves to under the new epoch.
-//
-// StillServes is an ORACLE here, not a control: this case cannot make a real
-// backend keep serving one address and drop another, since Phase 0 wires no
-// real backend. It asks StillServes what the fixture (once real) decided,
-// and checks the rest of the contract's promise against that decision for
-// both outcomes.
-func RunEpochBumpVoidsOnlyAddressesOfVersionsNoLongerServed(t *testing.T, ctx context.Context, fixture EpochFixture) {
+// RunEpochBumpPreservesAnUntouchedAddressWithNoRemint pins R20-n's survival
+// exception at the correct grain for the Restore and destructive-reinit
+// triggers: a Version the transition did not discard keeps its address Live
+// on its own, with NO remint and NO mapping lookup. The addendum's survival
+// clause — "a version that survives the transition keeps its address
+// resolving" — is unqualified by trigger; the retained-mapping mechanism
+// belongs to the token-scheme-change case alone (see
+// RunTokenSchemeChangeEpochBumpRetainsAnAddressViaMapping) because that is
+// the one trigger that re-encodes addresses even for content the store still
+// holds. Restore and destructive-reinit don't touch the encoding, so a
+// Version they left alone simply keeps resolving under the address it
+// already had.
+func RunEpochBumpPreservesAnUntouchedAddressWithNoRemint(t *testing.T, ctx context.Context, fixture EpochFixture) {
+	t.Helper()
+	if fixture.MintUnderEpoch == nil {
+		t.Skip("this backend has no way to mint a Version under a known epoch (MintUnderEpoch is nil)")
+	}
+	if fixture.BumpEpoch == nil {
+		t.Skip("this backend has no epoch concept yet (BumpEpoch is nil)")
+	}
+	if fixture.StillServes == nil {
+		t.Skip("this backend cannot report whether it still serves a prior-epoch Version (StillServes is nil)")
+	}
+	if fixture.Resolve == nil {
+		t.Skip("this backend does not yet report retention state (Resolve is nil)")
+	}
+
+	for _, trigger := range []EpochBumpTrigger{EpochBumpTriggerRestore, EpochBumpTriggerDestructiveReinit} {
+		store := epochStore(fixture, "untouched-"+trigger.String())
+
+		addr, err := fixture.MintUnderEpoch(ctx, store, "record-a")
+		if err != nil {
+			t.Fatalf("[%s] MintUnderEpoch(record-a): %v", trigger, err)
+		}
+
+		newEpoch, err := fixture.BumpEpoch(ctx, store, trigger)
+		if err != nil {
+			t.Fatalf("[%s] BumpEpoch: %v", trigger, err)
+		}
+
+		// No remint, no mapping lookup — record-a's Version is still held,
+		// so its ORIGINAL address alone must keep resolving.
+		serves, err := fixture.StillServes(ctx, store, addr)
+		if err != nil {
+			t.Fatalf("[%s] StillServes(%s): %v", trigger, addr, err)
+		}
+		if !serves {
+			t.Errorf("[%s] StillServes(an address whose Version the transition did not discard) = false, want true: survival must not require a remint", trigger)
+		}
+
+		answer, err := fixture.Resolve(ctx, store, addr)
+		if err != nil {
+			t.Fatalf("[%s] Resolve(%s): %v", trigger, addr, err)
+		}
+		if answer.Restriction != RestrictionLive {
+			t.Errorf("[%s] Resolve(an untouched, still-held address) = %s, want RestrictionLive", trigger, answer.Restriction)
+		}
+		if answer.Epoch == nil {
+			t.Errorf("[%s] Resolve(an untouched, still-held address).Epoch = nil, want the current epoch populated", trigger)
+		} else if *answer.Epoch != newEpoch {
+			t.Errorf("[%s] Resolve(an untouched, still-held address).Epoch = %d, want the current epoch %d", trigger, *answer.Epoch, newEpoch)
+		}
+	}
+}
+
+// RunEpochBumpDoesNotReviveAnOrphanedAddressViaAFreshMint pins the other
+// half of R20-n's grain: after a Restore or destructive-reinit epoch bump,
+// an id receiving a fresh, UNRELATED mint must not make an earlier,
+// now-orphaned address for that same id resolve Live again. The two mints
+// share only a record id, never a Version, and R5 forbids exactly this —
+// "while the version [an address] names is retained, the address resolves
+// to that exact state ... and no later change anywhere alters what it
+// returns." An id acquiring new content after the bump is the "later
+// change" R5 rules out.
+func RunEpochBumpDoesNotReviveAnOrphanedAddressViaAFreshMint(t *testing.T, ctx context.Context, fixture EpochFixture) {
+	t.Helper()
+	if fixture.MintUnderEpoch == nil {
+		t.Skip("this backend has no way to mint a Version under a known epoch (MintUnderEpoch is nil)")
+	}
+	if fixture.BumpEpoch == nil {
+		t.Skip("this backend has no epoch concept yet (BumpEpoch is nil)")
+	}
+	if fixture.StillServes == nil {
+		t.Skip("this backend cannot report whether it still serves a prior-epoch Version (StillServes is nil)")
+	}
+	if fixture.Resolve == nil {
+		t.Skip("this backend does not yet report retention state (Resolve is nil)")
+	}
+	store := epochStore(fixture, "orphaned")
+
+	orphaned, err := fixture.MintUnderEpoch(ctx, store, "record-a")
+	if err != nil {
+		t.Fatalf("MintUnderEpoch(record-a): %v", err)
+	}
+
+	newEpoch, err := fixture.BumpEpoch(ctx, store, EpochBumpTriggerRestore)
+	if err != nil {
+		t.Fatalf("BumpEpoch(restore): %v", err)
+	}
+
+	// record-a's PRIOR Version was discarded by the restore. This second
+	// mint is unrelated fresh content, not a remint of what "orphaned"
+	// named — MintUnderEpoch's own contract is "mints a fresh Version for
+	// id", so nothing here carries the old Version forward.
+	fresh, err := fixture.MintUnderEpoch(ctx, store, "record-a")
+	if err != nil {
+		t.Fatalf("MintUnderEpoch(record-a) [unrelated fresh mint]: %v", err)
+	}
+	if fresh == orphaned {
+		t.Fatalf("MintUnderEpoch(record-a) after a bump returned the SAME address as before the bump (%s); this case requires the two mints to be distinguishable", fresh)
+	}
+
+	serves, err := fixture.StillServes(ctx, store, orphaned)
+	if err != nil {
+		t.Fatalf("StillServes(%s): %v", orphaned, err)
+	}
+	if serves {
+		t.Errorf("StillServes(an address orphaned by a restore, after its id got an unrelated fresh mint) = true, want false: the fresh mint names different content, so it must not revive the old address")
+	}
+
+	answer, err := fixture.Resolve(ctx, store, orphaned)
+	if err != nil {
+		t.Fatalf("Resolve(%s): %v", orphaned, err)
+	}
+	if answer.Restriction != RestrictionGoneReorganization {
+		t.Errorf("Resolve(an orphaned address after an unrelated fresh mint of its id) = %s, want RestrictionGoneReorganization: the state it named is gone, a same-id coincidence does not bring it back", answer.Restriction)
+	}
+	if answer.Epoch == nil {
+		t.Errorf("Resolve(an orphaned address after an unrelated fresh mint of its id).Epoch = nil, want the current epoch populated")
+	} else if *answer.Epoch != newEpoch {
+		t.Errorf("Resolve(an orphaned address after an unrelated fresh mint of its id).Epoch = %d, want the current epoch %d", *answer.Epoch, newEpoch)
+	}
+}
+
+// RunTokenSchemeChangeEpochBumpRetainsAnAddressViaMapping keeps R20-n's
+// original remint-based mechanism, but scoped to
+// EpochBumpTriggerTokenSchemeChange only, matching the addendum's own text:
+// "under a change of token scheme, through a retained mapping from the
+// prior-epoch address, which also reports the current one." A token-scheme
+// change re-encodes every address, even for content the store still holds,
+// so an explicit old-to-new lookup is the only way an untouched Version's
+// address can keep resolving — unlike Restore/destructive-reinit, which
+// leave the encoding alone and need no mapping (see
+// RunEpochBumpPreservesAnUntouchedAddressWithNoRemint).
+func RunTokenSchemeChangeEpochBumpRetainsAnAddressViaMapping(t *testing.T, ctx context.Context, fixture EpochFixture) {
 	t.Helper()
 	if fixture.MintUnderEpoch == nil {
 		t.Skip("this backend has no way to mint a Version under a known epoch (MintUnderEpoch is nil)")
@@ -846,7 +978,7 @@ func RunEpochBumpVoidsOnlyAddressesOfVersionsNoLongerServed(t *testing.T, ctx co
 	if fixture.CurrentAddressFor == nil {
 		t.Skip("this backend cannot report a still-served Version's new Address (CurrentAddressFor is nil)")
 	}
-	store := epochStore(fixture, "voids")
+	store := epochStore(fixture, "scheme-change")
 
 	addrA, err := fixture.MintUnderEpoch(ctx, store, "record-a")
 	if err != nil {
@@ -857,22 +989,16 @@ func RunEpochBumpVoidsOnlyAddressesOfVersionsNoLongerServed(t *testing.T, ctx co
 		t.Fatalf("MintUnderEpoch(record-b): %v", err)
 	}
 
-	newEpoch, err := fixture.BumpEpoch(ctx, store, EpochBumpTriggerRestore)
+	newEpoch, err := fixture.BumpEpoch(ctx, store, EpochBumpTriggerTokenSchemeChange)
 	if err != nil {
-		t.Fatalf("BumpEpoch: %v", err)
+		t.Fatalf("BumpEpoch(token-scheme-change): %v", err)
 	}
 
-	// record-a's Version survives the transition by being minted again under
-	// the new epoch — MintUnderEpoch's own contract is "mints a fresh
-	// Version for id under storeID's CURRENT epoch", so a second call here
-	// carries record-a's id forward. record-b is never minted again, so it
-	// does not survive. This makes both halves of R20-n deterministically in
-	// play instead of something to be discovered after the fact: addrA must
-	// still be served through the retained mapping, addrB must not, and a
-	// backend that gets the direction backwards must not be able to pass by
-	// having this case discover-then-swap around whatever it observes.
+	// record-a's Version is carried forward through the retained-mapping
+	// mechanism this trigger specifically owns; record-b is not, so it must
+	// go GoneReorganization instead.
 	if _, err := fixture.MintUnderEpoch(ctx, store, "record-a"); err != nil {
-		t.Fatalf("MintUnderEpoch(record-a) [carries it into the new epoch]: %v", err)
+		t.Fatalf("MintUnderEpoch(record-a) [retained mapping]: %v", err)
 	}
 
 	servesA, err := fixture.StillServes(ctx, store, addrA)
@@ -880,48 +1006,43 @@ func RunEpochBumpVoidsOnlyAddressesOfVersionsNoLongerServed(t *testing.T, ctx co
 		t.Fatalf("StillServes(%s): %v", addrA, err)
 	}
 	if !servesA {
-		t.Errorf("StillServes(record-a's prior-epoch address) = false, want true: record-a was minted again under the new epoch, so its prior address must still resolve through R20-n's retained mapping")
+		t.Errorf("StillServes(record-a's prior-epoch address) = false, want true: record-a was carried forward under the new token scheme via the retained mapping")
 	}
 	servesB, err := fixture.StillServes(ctx, store, addrB)
 	if err != nil {
 		t.Fatalf("StillServes(%s): %v", addrB, err)
 	}
 	if servesB {
-		t.Errorf("StillServes(record-b's prior-epoch address) = true, want false: record-b was never minted again, so it did not survive the epoch transition")
+		t.Errorf("StillServes(record-b's prior-epoch address) = true, want false: record-b has no retained mapping into the new token scheme")
 	}
 
-	stillServed, noLongerServed := addrA, addrB
-	if servesB && !servesA {
-		stillServed, noLongerServed = addrB, addrA
-	}
-
-	voidedAnswer, err := fixture.Resolve(ctx, store, noLongerServed)
+	voidedAnswer, err := fixture.Resolve(ctx, store, addrB)
 	if err != nil {
-		t.Fatalf("Resolve(no-longer-served): %v", err)
+		t.Fatalf("Resolve(record-b's prior-epoch address): %v", err)
 	}
 	if voidedAnswer.Restriction != RestrictionGoneReorganization {
-		t.Errorf("Resolve(a prior-epoch Address no longer served) = %s, want RestrictionGoneReorganization (R20-n)", voidedAnswer.Restriction)
+		t.Errorf("Resolve(a prior-epoch address with no retained mapping) = %s, want RestrictionGoneReorganization", voidedAnswer.Restriction)
 	}
 	if voidedAnswer.Epoch == nil {
-		t.Fatal("Resolve(a prior-epoch Address no longer served).Epoch = nil, want the current epoch populated (R20-n: the answer must name the current epoch, not just Restriction alone)")
+		t.Fatal("Resolve(a prior-epoch address with no retained mapping).Epoch = nil, want the current epoch populated")
 	} else if *voidedAnswer.Epoch != newEpoch {
-		t.Errorf("Resolve(a prior-epoch Address no longer served).Epoch = %d, want the current epoch %d", *voidedAnswer.Epoch, newEpoch)
+		t.Errorf("Resolve(a prior-epoch address with no retained mapping).Epoch = %d, want the current epoch %d", *voidedAnswer.Epoch, newEpoch)
 	}
 
-	keptAnswer, err := fixture.Resolve(ctx, store, stillServed)
+	keptAnswer, err := fixture.Resolve(ctx, store, addrA)
 	if err != nil {
-		t.Fatalf("Resolve(still-served): %v", err)
+		t.Fatalf("Resolve(record-a's prior-epoch address): %v", err)
 	}
 	if keptAnswer.Restriction != RestrictionLive {
-		t.Errorf("Resolve(a prior-epoch Address the backend still serves) = %s, want RestrictionLive (R20-n's exception)", keptAnswer.Restriction)
+		t.Errorf("Resolve(a prior-epoch address the backend still serves via retained mapping) = %s, want RestrictionLive", keptAnswer.Restriction)
 	}
 
-	newAddr, err := fixture.CurrentAddressFor(ctx, store, stillServed)
+	newAddr, err := fixture.CurrentAddressFor(ctx, store, addrA)
 	if err != nil {
-		t.Fatalf("CurrentAddressFor(%s): %v", stillServed, err)
+		t.Fatalf("CurrentAddressFor(%s): %v", addrA, err)
 	}
 	if newAddr == "" {
-		t.Error("CurrentAddressFor(a still-served prior-epoch Address) returned an empty Address, want a real one under the new epoch")
+		t.Error("CurrentAddressFor(a still-served prior-epoch address) returned an empty Address, want a real one under the new epoch")
 	}
 }
 

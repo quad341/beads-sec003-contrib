@@ -126,8 +126,14 @@ func TestVersionedHistoryPhase0RunsInFullSkipMode(t *testing.T) {
 		t.Run("AnEpochBumpIsTriggeredOnlyByRestoreReinitOrSchemeChange", func(t *testing.T) {
 			RunAnEpochBumpIsTriggeredOnlyByRestoreReinitOrSchemeChange(t, ctx, fixture)
 		})
-		t.Run("EpochBumpVoidsOnlyAddressesOfVersionsNoLongerServed", func(t *testing.T) {
-			RunEpochBumpVoidsOnlyAddressesOfVersionsNoLongerServed(t, ctx, fixture)
+		t.Run("EpochBumpPreservesAnUntouchedAddressWithNoRemint", func(t *testing.T) {
+			RunEpochBumpPreservesAnUntouchedAddressWithNoRemint(t, ctx, fixture)
+		})
+		t.Run("EpochBumpDoesNotReviveAnOrphanedAddressViaAFreshMint", func(t *testing.T) {
+			RunEpochBumpDoesNotReviveAnOrphanedAddressViaAFreshMint(t, ctx, fixture)
+		})
+		t.Run("TokenSchemeChangeEpochBumpRetainsAnAddressViaMapping", func(t *testing.T) {
+			RunTokenSchemeChangeEpochBumpRetainsAnAddressViaMapping(t, ctx, fixture)
 		})
 	})
 }
