@@ -27,8 +27,8 @@ func TestStillServesInTxHonorsARetainedMapping(t *testing.T) {
 	mock.ExpectQuery(`SELECT store_id, minted_id, minted_epoch FROM epoch_minted_addresses WHERE address = \?`).
 		WithArgs(oldAddress).
 		WillReturnRows(sqlmock.NewRows([]string{"store_id", "minted_id", "minted_epoch"}).AddRow(storeID, "record-a", 1))
-	mock.ExpectQuery(`SELECT epoch FROM store_epoch WHERE id = 1`).
-		WillReturnRows(sqlmock.NewRows([]string{"epoch"}).AddRow(2))
+	mock.ExpectQuery(`SELECT epoch, bumped_reason FROM store_epoch WHERE id = 1`).
+		WillReturnRows(sqlmock.NewRows([]string{"epoch", "bumped_reason"}).AddRow(2, "token-scheme-change"))
 	mock.ExpectQuery(`SELECT COUNT\(\*\) FROM epoch_minted_addresses WHERE store_id = \? AND minted_id = \? AND minted_epoch = \?`).
 		WithArgs(storeID, "record-a", int64(2)).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
@@ -59,8 +59,8 @@ func TestStillServesInTxReportsFalseWhenIDWasNotCarriedForward(t *testing.T) {
 	mock.ExpectQuery(`SELECT store_id, minted_id, minted_epoch FROM epoch_minted_addresses WHERE address = \?`).
 		WithArgs(oldAddress).
 		WillReturnRows(sqlmock.NewRows([]string{"store_id", "minted_id", "minted_epoch"}).AddRow(storeID, "record-b", 1))
-	mock.ExpectQuery(`SELECT epoch FROM store_epoch WHERE id = 1`).
-		WillReturnRows(sqlmock.NewRows([]string{"epoch"}).AddRow(2))
+	mock.ExpectQuery(`SELECT epoch, bumped_reason FROM store_epoch WHERE id = 1`).
+		WillReturnRows(sqlmock.NewRows([]string{"epoch", "bumped_reason"}).AddRow(2, "token-scheme-change"))
 	mock.ExpectQuery(`SELECT COUNT\(\*\) FROM epoch_minted_addresses WHERE store_id = \? AND minted_id = \? AND minted_epoch = \?`).
 		WithArgs(storeID, "record-b", int64(2)).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
@@ -91,8 +91,8 @@ func TestResolveEpochInTxHonorsARetainedMapping(t *testing.T) {
 	mock.ExpectQuery(`SELECT store_id, minted_id, minted_epoch FROM epoch_minted_addresses WHERE address = \?`).
 		WithArgs(oldAddress).
 		WillReturnRows(sqlmock.NewRows([]string{"store_id", "minted_id", "minted_epoch"}).AddRow(storeID, "record-a", 1))
-	mock.ExpectQuery(`SELECT epoch FROM store_epoch WHERE id = 1`).
-		WillReturnRows(sqlmock.NewRows([]string{"epoch"}).AddRow(2))
+	mock.ExpectQuery(`SELECT epoch, bumped_reason FROM store_epoch WHERE id = 1`).
+		WillReturnRows(sqlmock.NewRows([]string{"epoch", "bumped_reason"}).AddRow(2, "token-scheme-change"))
 	mock.ExpectQuery(`SELECT COUNT\(\*\) FROM epoch_minted_addresses WHERE store_id = \? AND minted_id = \? AND minted_epoch = \?`).
 		WithArgs(storeID, "record-a", int64(2)).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
