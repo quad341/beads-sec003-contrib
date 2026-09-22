@@ -67,20 +67,24 @@ func epochAddress(storeID, id string, epoch int) string {
 
 // ensureStoreEpochRow lazily initializes store_epoch's singleton row
 // (migration 0067; the table starts empty) to epoch 1 on first use, and
-// reports the current epoch either way.
-func ensureStoreEpochRow(ctx context.Context, tx DBTX) (int, error) {
+// reports the current epoch together with its most recent bump's reason
+// (BumpEpochInTx's reason parameter) either way. reason is "" before any
+// bump has happened: bumped_reason has no default and BumpEpochInTx is its
+// only writer.
+func ensureStoreEpochRow(ctx context.Context, tx DBTX) (int, string, error) {
 	var epoch int
-	err := tx.QueryRowContext(ctx, `SELECT epoch FROM store_epoch WHERE id = 1`).Scan(&epoch)
+	var reason sql.NullString
+	err := tx.QueryRowContext(ctx, `SELECT epoch, bumped_reason FROM store_epoch WHERE id = 1`).Scan(&epoch, &reason)
 	if errors.Is(err, sql.ErrNoRows) {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO store_epoch (id, epoch) VALUES (1, 1)`); err != nil {
-			return 0, fmt.Errorf("initialize store_epoch: %w", err)
+			return 0, "", fmt.Errorf("initialize store_epoch: %w", err)
 		}
-		return 1, nil
+		return 1, "", nil
 	}
 	if err != nil {
-		return 0, fmt.Errorf("read store_epoch: %w", err)
+		return 0, "", fmt.Errorf("read store_epoch: %w", err)
 	}
-	return epoch, nil
+	return epoch, reason.String, nil
 }
 
 // epochMintedAddress is one row as read from epoch_minted_addresses.
@@ -138,7 +142,7 @@ func upsertEpochMintedAddressInTx(ctx context.Context, tx DBTX, address, storeID
 // database already) — storeID is accepted here only to satisfy
 // EpochFixture's hook signature.
 func CurrentEpochInTx(ctx context.Context, tx DBTX, storeID string) (int, error) {
-	epoch, err := ensureStoreEpochRow(ctx, tx)
+	epoch, _, err := ensureStoreEpochRow(ctx, tx)
 	if err != nil {
 		return 0, fmt.Errorf("epoch CAS: current epoch for %s: %w", storeID, err)
 	}
@@ -151,7 +155,7 @@ func CurrentEpochInTx(ctx context.Context, tx DBTX, storeID string) (int, error)
 // conformance.EpochBumpTrigger to this plain string via trigger.String(),
 // keeping that vocabulary out of this file per the package doc above).
 func BumpEpochInTx(ctx context.Context, tx DBTX, storeID, reason string) (int, error) {
-	if _, err := ensureStoreEpochRow(ctx, tx); err != nil {
+	if _, _, err := ensureStoreEpochRow(ctx, tx); err != nil {
 		return 0, fmt.Errorf("epoch CAS: bump epoch for %s: %w", storeID, err)
 	}
 	if _, err := tx.ExecContext(ctx,
@@ -172,7 +176,7 @@ func BumpEpochInTx(ctx context.Context, tx DBTX, storeID, reason string) (int, e
 // same epoch reproduces the same address and is an idempotent no-op upsert
 // of the same row.
 func MintUnderEpochInTx(ctx context.Context, tx DBTX, storeID, id string) (string, error) {
-	epoch, err := ensureStoreEpochRow(ctx, tx)
+	epoch, _, err := ensureStoreEpochRow(ctx, tx)
 	if err != nil {
 		return "", fmt.Errorf("epoch CAS: mint %s under epoch for %s: %w", id, storeID, err)
 	}
@@ -187,14 +191,19 @@ func MintUnderEpochInTx(ctx context.Context, tx DBTX, storeID, id string) (strin
 	return address, nil
 }
 
+// epochBumpReasonTokenSchemeChange is BumpEpochInTx's reason string for a
+// token-scheme-change trigger (conformance.EpochBumpTrigger.String()) — the
+// only trigger addressSurvivesTransitionInTx treats as having a
+// retained-mapping mechanism (architect ruling, be-mnw3c Q2).
+const epochBumpReasonTokenSchemeChange = "token-scheme-change"
+
 // mintedIDHasAddressAtEpochInTx reports whether mintedID has an address
-// minted under storeID at epoch — R20-n's retained-mapping exception: a
-// version that survives an epoch transition keeps its prior-epoch address
-// resolving once CurrentAddressForInTx (or a fresh MintUnderEpochInTx) has
-// carried its id forward into the current epoch. mintedID is never
-// recomputed from a bumped store_epoch (see the package doc above), so this
-// is a lookup for a second, later row sharing the same id, not a
-// derivation.
+// minted under storeID at epoch — the token-scheme-change branch of R20-n's
+// survival rule (addressSurvivesTransitionInTx): a version carried forward
+// by a retained mapping gets a fresh mint AT the current epoch, so a second,
+// later row sharing the same id is that carry-forward act, not a
+// derivation. mintedID is never recomputed from a bumped store_epoch (see
+// the package doc above).
 func mintedIDHasAddressAtEpochInTx(ctx context.Context, tx DBTX, storeID, mintedID string, epoch int) (bool, error) {
 	var count int
 	err := tx.QueryRowContext(ctx,
@@ -207,13 +216,54 @@ func mintedIDHasAddressAtEpochInTx(ctx context.Context, tx DBTX, storeID, minted
 	return count > 0, nil
 }
 
+// mintedIDHasLaterMintInTx reports whether mintedID has a row minted at an
+// epoch later than afterEpoch — the restore/destructive-reinit branch of
+// R20-n's survival rule (addressSurvivesTransitionInTx). Those triggers have
+// no retained-mapping concept (architect ruling, be-mnw3c Q2): a later mint
+// of the same id means its content was superseded by something else after
+// this address's own epoch, not carried forward, so the absence of any
+// later mint is what proves an address is still untouched.
+func mintedIDHasLaterMintInTx(ctx context.Context, tx DBTX, storeID, mintedID string, afterEpoch int) (bool, error) {
+	var count int
+	err := tx.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM epoch_minted_addresses WHERE store_id = ? AND minted_id = ? AND minted_epoch > ?`,
+		storeID, mintedID, afterEpoch,
+	).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("epoch CAS: check later mint for %s after epoch %d: %w", mintedID, afterEpoch, err)
+	}
+	return count > 0, nil
+}
+
+// addressSurvivesTransitionInTx decides R20-n survival for a minted address
+// whose row is not at the current epoch, given the trigger that produced
+// the most recent bump (store_epoch.bumped_reason, read by
+// ensureStoreEpochRow). Per the architect's ruling on be-mnw3c (Q2), only
+// token-scheme-change has a retained-mapping mechanism: mintedID getting a
+// fresh mint AT the current epoch is the deliberate carry-forward act, so
+// mintedIDHasAddressAtEpochInTx is the right check. Restore and
+// destructive-reinit have no such mechanism, so survival is instead "no
+// later mint exists" for that id since its own mintedEpoch — the negation
+// of mintedIDHasLaterMintInTx.
+func addressSurvivesTransitionInTx(ctx context.Context, tx DBTX, storeID, mintedID string, mintedEpoch, currentEpoch int, currentTrigger string) (bool, error) {
+	if currentTrigger == epochBumpReasonTokenSchemeChange {
+		return mintedIDHasAddressAtEpochInTx(ctx, tx, storeID, mintedID, currentEpoch)
+	}
+	hasLaterMint, err := mintedIDHasLaterMintInTx(ctx, tx, storeID, mintedID, mintedEpoch)
+	if err != nil {
+		return false, err
+	}
+	return !hasLaterMint, nil
+}
+
 // StillServesInTx reports whether address is still served under storeID's
 // CURRENT epoch: an address minted under an earlier epoch is no longer
-// served once the epoch has moved past it, UNLESS its underlying id was
-// carried forward into the current epoch by a retained mapping (R20-n),
-// even though the row itself is never deleted (ResolveEpochInTx must still
-// be able to answer for it). An address from a different store, or one
-// never minted, is not served either.
+// served once the epoch has moved past it, UNLESS R20-n's survival rule
+// says its underlying id survives the transition that moved it
+// (addressSurvivesTransitionInTx), even though the row itself is never
+// deleted (ResolveEpochInTx must still be able to answer for it). An
+// address from a different store, or one never minted, is not served
+// either.
 func StillServesInTx(ctx context.Context, tx DBTX, storeID, address string) (bool, error) {
 	row, found, err := readEpochMintedAddressInTx(ctx, tx, address)
 	if err != nil {
@@ -222,29 +272,29 @@ func StillServesInTx(ctx context.Context, tx DBTX, storeID, address string) (boo
 	if !found || row.storeID != storeID {
 		return false, nil
 	}
-	epoch, err := ensureStoreEpochRow(ctx, tx)
+	epoch, reason, err := ensureStoreEpochRow(ctx, tx)
 	if err != nil {
 		return false, fmt.Errorf("epoch CAS: still serves %s for %s: %w", address, storeID, err)
 	}
 	if row.mintedEpoch == epoch {
 		return true, nil
 	}
-	retained, err := mintedIDHasAddressAtEpochInTx(ctx, tx, storeID, row.mintedID, epoch)
+	survives, err := addressSurvivesTransitionInTx(ctx, tx, storeID, row.mintedID, row.mintedEpoch, epoch, reason)
 	if err != nil {
 		return false, fmt.Errorf("epoch CAS: still serves %s for %s: %w", address, storeID, err)
 	}
-	return retained, nil
+	return survives, nil
 }
 
 // ResolveEpochInTx answers R20's epoch-only restriction for address: Live
-// while its minting epoch is still current OR its id was carried forward
-// into the current epoch by a retained mapping (R20-n), GoneReorganization
-// once the epoch has moved past it with no such mapping (a reorganization,
-// not a retention or erasure outcome; RetentionFixture/R17 states are out
-// of scope here), and Unknown for an address this store never minted.
-// ProducingStore is always storeID: this file has no lineage/replica model
-// to attribute a foreign store to (unlike RetentionFixture's cross-store
-// answers).
+// while its minting epoch is still current OR R20-n's survival rule says
+// its id survives the transition that moved it
+// (addressSurvivesTransitionInTx), GoneReorganization once the epoch has
+// moved past it with no survival (a reorganization, not a retention or
+// erasure outcome; RetentionFixture/R17 states are out of scope here), and
+// Unknown for an address this store never minted. ProducingStore is always
+// storeID: this file has no lineage/replica model to attribute a foreign
+// store to (unlike RetentionFixture's cross-store answers).
 func ResolveEpochInTx(ctx context.Context, tx DBTX, storeID, address string) (EpochResolveResult, error) {
 	row, found, err := readEpochMintedAddressInTx(ctx, tx, address)
 	if err != nil {
@@ -253,18 +303,18 @@ func ResolveEpochInTx(ctx context.Context, tx DBTX, storeID, address string) (Ep
 	if !found || row.storeID != storeID {
 		return EpochResolveResult{Restriction: EpochRestrictionUnknown, ProducingStore: storeID}, nil
 	}
-	epoch, err := ensureStoreEpochRow(ctx, tx)
+	epoch, reason, err := ensureStoreEpochRow(ctx, tx)
 	if err != nil {
 		return EpochResolveResult{}, fmt.Errorf("epoch CAS: resolve %s for %s: %w", address, storeID, err)
 	}
 	if row.mintedEpoch == epoch {
 		return EpochResolveResult{Restriction: EpochRestrictionLive, ProducingStore: storeID, Epoch: &epoch}, nil
 	}
-	retained, err := mintedIDHasAddressAtEpochInTx(ctx, tx, storeID, row.mintedID, epoch)
+	survives, err := addressSurvivesTransitionInTx(ctx, tx, storeID, row.mintedID, row.mintedEpoch, epoch, reason)
 	if err != nil {
 		return EpochResolveResult{}, fmt.Errorf("epoch CAS: resolve %s for %s: %w", address, storeID, err)
 	}
-	if retained {
+	if survives {
 		return EpochResolveResult{Restriction: EpochRestrictionLive, ProducingStore: storeID, Epoch: &epoch}, nil
 	}
 	return EpochResolveResult{Restriction: EpochRestrictionGoneReorganization, ProducingStore: storeID, Epoch: &epoch}, nil
