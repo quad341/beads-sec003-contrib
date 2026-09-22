@@ -90,8 +90,14 @@ func TestEpochContract(t *testing.T) {
 	t.Run("AnEpochBumpIsTriggeredOnlyByRestoreReinitOrSchemeChange", func(t *testing.T) {
 		conformance.RunAnEpochBumpIsTriggeredOnlyByRestoreReinitOrSchemeChange(t, ctx, fixture)
 	})
-	t.Run("EpochBumpVoidsOnlyAddressesOfVersionsNoLongerServed", func(t *testing.T) {
-		conformance.RunEpochBumpVoidsOnlyAddressesOfVersionsNoLongerServed(t, ctx, fixture)
+	t.Run("EpochBumpPreservesAnUntouchedAddressWithNoRemint", func(t *testing.T) {
+		conformance.RunEpochBumpPreservesAnUntouchedAddressWithNoRemint(t, ctx, fixture)
+	})
+	t.Run("EpochBumpDoesNotReviveAnOrphanedAddressViaAFreshMint", func(t *testing.T) {
+		conformance.RunEpochBumpDoesNotReviveAnOrphanedAddressViaAFreshMint(t, ctx, fixture)
+	})
+	t.Run("TokenSchemeChangeEpochBumpRetainsAnAddressViaMapping", func(t *testing.T) {
+		conformance.RunTokenSchemeChangeEpochBumpRetainsAnAddressViaMapping(t, ctx, fixture)
 	})
 }
 
