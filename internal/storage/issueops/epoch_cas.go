@@ -67,24 +67,30 @@ func epochAddress(storeID, id string, epoch int) string {
 
 // ensureStoreEpochRow lazily initializes store_epoch's singleton row
 // (migration 0067; the table starts empty) to epoch 1 on first use, and
-// reports the current epoch together with its most recent bump's reason
-// (BumpEpochInTx's reason parameter) either way. reason is "" before any
-// bump has happened: bumped_reason has no default and BumpEpochInTx is its
-// only writer.
-func ensureStoreEpochRow(ctx context.Context, tx DBTX) (int, string, error) {
+// reports the current epoch together with last_token_scheme_change_epoch
+// (migration 0071, R20-n / architect ruling be-bo451) either way: nil when
+// no token-scheme-change bump has ever landed (bumped_reason alone cannot
+// answer this once a store has bumped more than once under mixed triggers,
+// since it is a singleton overwritten on every bump — see
+// addressSurvivesTransitionInTx).
+func ensureStoreEpochRow(ctx context.Context, tx DBTX) (int, *int, error) {
 	var epoch int
-	var reason sql.NullString
-	err := tx.QueryRowContext(ctx, `SELECT epoch, bumped_reason FROM store_epoch WHERE id = 1`).Scan(&epoch, &reason)
+	var lastSchemeChange sql.NullInt64
+	err := tx.QueryRowContext(ctx, `SELECT epoch, last_token_scheme_change_epoch FROM store_epoch WHERE id = 1`).Scan(&epoch, &lastSchemeChange)
 	if errors.Is(err, sql.ErrNoRows) {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO store_epoch (id, epoch) VALUES (1, 1)`); err != nil {
-			return 0, "", fmt.Errorf("initialize store_epoch: %w", err)
+			return 0, nil, fmt.Errorf("initialize store_epoch: %w", err)
 		}
-		return 1, "", nil
+		return 1, nil, nil
 	}
 	if err != nil {
-		return 0, "", fmt.Errorf("read store_epoch: %w", err)
+		return 0, nil, fmt.Errorf("read store_epoch: %w", err)
 	}
-	return epoch, reason.String, nil
+	if !lastSchemeChange.Valid {
+		return epoch, nil, nil
+	}
+	v := int(lastSchemeChange.Int64)
+	return epoch, &v, nil
 }
 
 // epochMintedAddress is one row as read from epoch_minted_addresses.
@@ -154,14 +160,28 @@ func CurrentEpochInTx(ctx context.Context, tx DBTX, storeID string) (int, error)
 // token-scheme-change — the leg adapter converts the fixture's
 // conformance.EpochBumpTrigger to this plain string via trigger.String(),
 // keeping that vocabulary out of this file per the package doc above).
+//
+// On a token-scheme-change bump only (R20-n / architect ruling be-bo451),
+// the same statement also sets last_token_scheme_change_epoch to the
+// post-increment epoch, so a later addressSurvivesTransitionInTx call can
+// anchor its retained-mapping check to the epoch of the most recent
+// token-scheme-change bump specifically, not to whichever trigger happened
+// to bump last. last_token_scheme_change_epoch = epoch + 1 MUST be listed
+// BEFORE epoch = epoch + 1 in the SET clause: MySQL/Dolt evaluates a
+// multi-column SET left-to-right within one statement, so the reverse order
+// would read the already-incremented epoch and double-bump it. A restore or
+// destructive-reinit bump leaves last_token_scheme_change_epoch untouched —
+// not even a same-value no-op — matching the ruling's "no retained-mapping
+// mechanism for those triggers" (be-mnw3c Q2).
 func BumpEpochInTx(ctx context.Context, tx DBTX, storeID, reason string) (int, error) {
 	if _, _, err := ensureStoreEpochRow(ctx, tx); err != nil {
 		return 0, fmt.Errorf("epoch CAS: bump epoch for %s: %w", storeID, err)
 	}
-	if _, err := tx.ExecContext(ctx,
-		`UPDATE store_epoch SET epoch = epoch + 1, bumped_at = ?, bumped_reason = ? WHERE id = 1`,
-		time.Now().UTC(), reason,
-	); err != nil {
+	query := `UPDATE store_epoch SET epoch = epoch + 1, bumped_at = ?, bumped_reason = ? WHERE id = 1`
+	if reason == epochBumpReasonTokenSchemeChange {
+		query = `UPDATE store_epoch SET last_token_scheme_change_epoch = epoch + 1, epoch = epoch + 1, bumped_at = ?, bumped_reason = ? WHERE id = 1`
+	}
+	if _, err := tx.ExecContext(ctx, query, time.Now().UTC(), reason); err != nil {
 		return 0, fmt.Errorf("epoch CAS: bump epoch for %s: %w", storeID, err)
 	}
 	var newEpoch int
@@ -236,20 +256,45 @@ func mintedIDHasLaterMintInTx(ctx context.Context, tx DBTX, storeID, mintedID st
 }
 
 // addressSurvivesTransitionInTx decides R20-n survival for a minted address
-// whose row is not at the current epoch, given the trigger that produced
-// the most recent bump (store_epoch.bumped_reason, read by
-// ensureStoreEpochRow). Per the architect's ruling on be-mnw3c (Q2), only
-// token-scheme-change has a retained-mapping mechanism: mintedID getting a
-// fresh mint AT the current epoch is the deliberate carry-forward act, so
-// mintedIDHasAddressAtEpochInTx is the right check. Restore and
-// destructive-reinit have no such mechanism, so survival is instead "no
-// later mint exists" for that id since its own mintedEpoch — the negation
-// of mintedIDHasLaterMintInTx.
-func addressSurvivesTransitionInTx(ctx context.Context, tx DBTX, storeID, mintedID string, mintedEpoch, currentEpoch int, currentTrigger string) (bool, error) {
-	if currentTrigger == epochBumpReasonTokenSchemeChange {
-		return mintedIDHasAddressAtEpochInTx(ctx, tx, storeID, mintedID, currentEpoch)
+// whose row is not at the current epoch (architect ruling be-bo451,
+// generalizing the single-bump rule to multi-bump mixed-trigger histories).
+//
+// Let k = lastTokenSchemeChangeEpoch (store_epoch.last_token_scheme_change_epoch,
+// read by ensureStoreEpochRow) if it is non-nil AND greater than mintedEpoch,
+// else "none" — a scheme change at or before the mint is not a transition
+// this address needs a bridge for, since it was already minted under the
+// post-change scheme.
+//
+//   - k = none: survival is "no later mint exists" for mintedID since its
+//     own mintedEpoch — the pre-R20-n single-bump rule, generalized to
+//     ignore any number of intervening restore/destructive-reinit bumps,
+//     neither of which has a retained-mapping mechanism (architect ruling,
+//     be-mnw3c Q2).
+//   - k exists: survival requires BOTH a bridge — mintedID has an address
+//     minted at epoch k, the deliberate carry-forward act — AND no later
+//     mint since k. A missing bridge at k is checked first and short-circuits
+//     the rest: it is permanent and does not self-heal on a later bump, so
+//     mintedIDHasLaterMintInTx must not run once the bridge check already
+//     fails (an earlier scheme change's bridge never substitutes for a
+//     missing one at the MOST RECENT scheme change).
+func addressSurvivesTransitionInTx(ctx context.Context, tx DBTX, storeID, mintedID string, mintedEpoch int, _ int, lastTokenSchemeChangeEpoch *int) (bool, error) {
+	hasBridgeEpoch := lastTokenSchemeChangeEpoch != nil && *lastTokenSchemeChangeEpoch > mintedEpoch
+	if !hasBridgeEpoch {
+		hasLaterMint, err := mintedIDHasLaterMintInTx(ctx, tx, storeID, mintedID, mintedEpoch)
+		if err != nil {
+			return false, err
+		}
+		return !hasLaterMint, nil
 	}
-	hasLaterMint, err := mintedIDHasLaterMintInTx(ctx, tx, storeID, mintedID, mintedEpoch)
+	k := *lastTokenSchemeChangeEpoch
+	bridged, err := mintedIDHasAddressAtEpochInTx(ctx, tx, storeID, mintedID, k)
+	if err != nil {
+		return false, err
+	}
+	if !bridged {
+		return false, nil
+	}
+	hasLaterMint, err := mintedIDHasLaterMintInTx(ctx, tx, storeID, mintedID, k)
 	if err != nil {
 		return false, err
 	}
@@ -272,14 +317,14 @@ func StillServesInTx(ctx context.Context, tx DBTX, storeID, address string) (boo
 	if !found || row.storeID != storeID {
 		return false, nil
 	}
-	epoch, reason, err := ensureStoreEpochRow(ctx, tx)
+	epoch, lastSchemeChange, err := ensureStoreEpochRow(ctx, tx)
 	if err != nil {
 		return false, fmt.Errorf("epoch CAS: still serves %s for %s: %w", address, storeID, err)
 	}
 	if row.mintedEpoch == epoch {
 		return true, nil
 	}
-	survives, err := addressSurvivesTransitionInTx(ctx, tx, storeID, row.mintedID, row.mintedEpoch, epoch, reason)
+	survives, err := addressSurvivesTransitionInTx(ctx, tx, storeID, row.mintedID, row.mintedEpoch, epoch, lastSchemeChange)
 	if err != nil {
 		return false, fmt.Errorf("epoch CAS: still serves %s for %s: %w", address, storeID, err)
 	}
@@ -303,14 +348,14 @@ func ResolveEpochInTx(ctx context.Context, tx DBTX, storeID, address string) (Ep
 	if !found || row.storeID != storeID {
 		return EpochResolveResult{Restriction: EpochRestrictionUnknown, ProducingStore: storeID}, nil
 	}
-	epoch, reason, err := ensureStoreEpochRow(ctx, tx)
+	epoch, lastSchemeChange, err := ensureStoreEpochRow(ctx, tx)
 	if err != nil {
 		return EpochResolveResult{}, fmt.Errorf("epoch CAS: resolve %s for %s: %w", address, storeID, err)
 	}
 	if row.mintedEpoch == epoch {
 		return EpochResolveResult{Restriction: EpochRestrictionLive, ProducingStore: storeID, Epoch: &epoch}, nil
 	}
-	survives, err := addressSurvivesTransitionInTx(ctx, tx, storeID, row.mintedID, row.mintedEpoch, epoch, reason)
+	survives, err := addressSurvivesTransitionInTx(ctx, tx, storeID, row.mintedID, row.mintedEpoch, epoch, lastSchemeChange)
 	if err != nil {
 		return EpochResolveResult{}, fmt.Errorf("epoch CAS: resolve %s for %s: %w", address, storeID, err)
 	}
