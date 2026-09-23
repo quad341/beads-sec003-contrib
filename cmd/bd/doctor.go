@@ -792,6 +792,17 @@ func runDiagnostics(path string) doctorResult {
 		result.OverallOK = false
 	}
 
+	// Check 10b2: Aux row id convergence — events/comments/issue_snapshots/
+	// compaction_snapshots rows whose id has drifted from its content-derived
+	// target (be-uqzw5). Unversioned newest-wins replication (Protocol v0.1
+	// §C) only converges rows whose ids are functions of their content, so a
+	// drifted row's clones never merge into one.
+	auxRowIDCheck := convertWithCategory(doctor.CheckAuxRowIDsWithStore(sharedStore), doctor.CategoryMetadata)
+	result.Checks = append(result.Checks, auxRowIDCheck)
+	if auxRowIDCheck.Status == statusError || auxRowIDCheck.Status == statusWarning {
+		result.OverallOK = false
+	}
+
 	// Check 10c: is_blocked consistency — derived flags a skipped post-pull
 	// recompute can leave stale (bd-6dnrw.37). `bd ready` trusts is_blocked, so
 	// staleness silently hides ready work; the full recompute repairs it.

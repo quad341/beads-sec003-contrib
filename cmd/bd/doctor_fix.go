@@ -330,6 +330,8 @@ func applyFixList(path string, fixes []doctorCheck) {
 			err = fix.CloneLocalFKEnforcement(path, doctorVerbose)
 		case "Dependency Keys":
 			err = fix.DependencyKeys(path, doctorVerbose)
+		case "Aux Row IDs":
+			err = fix.AuxRowIDs(path, doctorVerbose)
 		case "Blocked State":
 			// bd-6dnrw.37: full is_blocked recompute. Pinned to a terminal
 			// priority in the sort above so it runs after every graph-mutating

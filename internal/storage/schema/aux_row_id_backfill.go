@@ -547,30 +547,36 @@ func isSchemaEncodingDriftErr(err error) bool {
 	return strings.Contains(strings.ToLower(err.Error()), "invalid hash length")
 }
 
-// rekeyAuxRowTable re-derives the ids of one table. The whole table is grouped
-// by content digest; each digest's rows take the deterministic ids for
-// ordinals 0..n-1. A row already holding one of its group's target ids keeps
-// it (idempotence: re-running never swaps ids within a group), and the
-// remaining rows take the remaining targets in sorted-current-id order. Across
-// clones that assignment may permute within a group of exact-duplicate rows,
-// but duplicates are interchangeable and the id set is identical, so the
-// merged result still converges.
-func rekeyAuxRowTable(ctx context.Context, db DBConn, t auxRekeyTable) (bool, error) {
+// auxRowRekey is one row's re-key: it currently holds oldID and must be
+// rewritten to newID, its content-derived target (internal/storage/rowid).
+type auxRowRekey struct{ oldID, newID string }
+
+// planAuxRowTableRekey computes one table's re-key without writing anything.
+// The whole table is grouped by content digest; each digest's rows take the
+// deterministic ids for ordinals 0..n-1. A row already holding one of its
+// group's target ids keeps it (idempotence: re-running never swaps ids within
+// a group), and the remaining rows take the remaining targets in
+// sorted-current-id order. Across clones that assignment may permute within a
+// group of exact-duplicate rows, but duplicates are interchangeable and the id
+// set is identical, so the merged result still converges. Split out of
+// rekeyAuxRowTable (bd-uqzw5) so a caller can inspect the pending re-key
+// without applying it, e.g. bd doctor's read-only scan.
+func planAuxRowTableRekey(ctx context.Context, db DBConn, t auxRekeyTable) ([]auxRowRekey, error) {
 	// Skip cleanly if the table or its id column isn't present (older or partial
 	// schema): nothing to re-key. After MigrateUp's main pass the id column is
 	// CHAR(36) on any schema this runs against (0037 precedes the marker).
 	hasID, err := columnExists(ctx, db, t.name, "id")
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	if !hasID {
-		return false, nil
+		return nil, nil
 	}
 
 	//nolint:gosec // G201: name/columns come from the hardcoded auxRekeyTables, never user input.
 	rows, err := db.QueryContext(ctx, fmt.Sprintf(`SELECT id, %s FROM %s`, t.columns, t.name))
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	nFields := strings.Count(t.columns, ",") + 1
 	groups := make(map[string][]string)
@@ -584,18 +590,17 @@ func rekeyAuxRowTable(ctx context.Context, db DBConn, t auxRekeyTable) (bool, er
 		}
 		if err := rows.Scan(dests...); err != nil {
 			_ = rows.Close()
-			return false, err
+			return nil, err
 		}
 		digest := rowid.Digest(fields)
 		groups[digest] = append(groups[digest], id)
 	}
 	_ = rows.Close()
 	if err := rows.Err(); err != nil {
-		return false, err
+		return nil, err
 	}
 
-	type rekey struct{ oldID, newID string }
-	var todo []rekey
+	var todo []auxRowRekey
 	for digest, ids := range groups {
 		targets := make([]string, len(ids))
 		targetSet := make(map[string]bool, len(ids))
@@ -621,13 +626,23 @@ func rekeyAuxRowTable(ctx context.Context, db DBConn, t auxRekeyTable) (bool, er
 			if held[target] {
 				continue
 			}
-			todo = append(todo, rekey{oldID: free[i], newID: target})
+			todo = append(todo, auxRowRekey{oldID: free[i], newID: target})
 			i++
 		}
 	}
 	// Deterministic UPDATE order (groups is a map) so runs are reproducible.
 	sort.Slice(todo, func(i, j int) bool { return todo[i].oldID < todo[j].oldID })
+	return todo, nil
+}
 
+// rekeyAuxRowTable re-derives the ids of one table by applying
+// planAuxRowTableRekey's plan. See planAuxRowTableRekey for the grouping and
+// assignment rule.
+func rekeyAuxRowTable(ctx context.Context, db DBConn, t auxRekeyTable) (bool, error) {
+	todo, err := planAuxRowTableRekey(ctx, db, t)
+	if err != nil {
+		return false, err
+	}
 	for _, r := range todo {
 		//nolint:gosec // G201: table name is a hardcoded constant, never user input.
 		if _, err := db.ExecContext(ctx, fmt.Sprintf(`UPDATE %s SET id = ? WHERE id = ?`, t.name),
