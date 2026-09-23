@@ -131,6 +131,20 @@ func HandleErrorRespectJSON(format string, args ...interface{}) error {
 	return HandleError(format, args...)
 }
 
+// HandleErrorRespectJSONWithCode is HandleErrorRespectJSON with a
+// caller-chosen exit code in place of the hardcoded 1, for a refusal a
+// script needs to tell apart from a generic failure without parsing stderr.
+// First caller: cmd/bd/versions.go's ExitVersions* constants (be-hs42e.9,
+// #5898 review on #6661 -- "callers branch on codes, not on rendered text").
+func HandleErrorRespectJSONWithCode(code int, format string, args ...interface{}) error {
+	if jsonOutput {
+		jsonStdoutError(fmt.Sprintf(format, args...), "")
+		return &exitError{Code: code}
+	}
+	fmt.Fprintf(os.Stderr, "Error: "+format+"\n", args...)
+	return &exitError{Code: code}
+}
+
 func HandleErrorWithHint(message, hint string) error {
 	if jsonOutput {
 		jsonStderrError(message, hint)

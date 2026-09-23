@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/steveyegge/beads/internal/metrics"
 	"github.com/steveyegge/beads/internal/storage"
+	"github.com/steveyegge/beads/internal/storage/issueops"
 	"github.com/steveyegge/beads/internal/ui"
 	"github.com/steveyegge/beads/internal/utils"
 )
@@ -25,6 +26,34 @@ var (
 	errVersionedHistoryOff = errors.New("versioned history is not enabled on this store")
 	errVersionsUnsupported = errors.New("this storage backend cannot serve version history")
 	errNoSuchBead          = errors.New("no such bead")
+)
+
+// Exit codes for versions' refusal classes, so a script can tell "turn the
+// feature on" from "this bead does not exist" from "this backend cannot
+// answer" without parsing rendered text (bee-ghosttrack's review on #5898,
+// referencing the already-landed #6661: "callers branch on codes, not on
+// rendered text"). Scoped to this command family, the same way sync.go's
+// ExitSync* and init_safety.go's ExitRemoteDivergenceRefused/... are --
+// 20-23 chosen clear of every other family's range (2-4, 10-14, 75) rather
+// than because the numbers themselves mean anything.
+const (
+	// ExitVersionsFeatureOff means recording is off and nothing was ever
+	// recorded for this bead -- turn on versioned-history.enabled and retry.
+	ExitVersionsFeatureOff = 20
+	// ExitVersionsNotFound means the store has no bead by this id and no
+	// versions were recorded under it either -- an absence, not a refusal.
+	ExitVersionsNotFound = 21
+	// ExitVersionsUnsupported means this backend cannot serve version
+	// history at all (proxied, no-db, non-Dolt) -- retrying will not help.
+	ExitVersionsUnsupported = 22
+	// ExitVersionsGone is reserved for the --at / --from-to siblings
+	// (be-hs42e.6.1.1/.2): a requested point or range is gone under
+	// retention, erasure or a reorganization. bd versions (this file) never
+	// returns it today -- runVersions has no as-of selector to refuse on --
+	// but the two commands answer from the same restriction vocabulary
+	// (issueops.AsOfRestriction) and must not race to pick different
+	// numbers for the same class.
+	ExitVersionsGone = 23
 )
 
 // versionsOutcome is what runVersions resolved, kept apart from the rendering
@@ -99,23 +128,8 @@ Examples:
 		recording := versionedHistoryEnabled(rootCtx, store)
 
 		outcome, err := runVersions(rootCtx, store, issueID, recording, resolved)
-		switch {
-		case errors.Is(err, errNoSuchBead):
-			return HandleErrorRespectJSON(
-				"no bead %s in this store, and no versions recorded under that id.", issueID)
-		case errors.Is(err, errVersionedHistoryOff):
-			return HandleErrorRespectJSON(
-				"versioned history is not being recorded on this store, and nothing was recorded earlier.\n"+
-					"Turn it on with:  bd config set %s true\n"+
-					"or for one run:   BD_VERSIONED_HISTORY_ENABLED=1 bd versions %s\n"+
-					"Recording starts from that point on; it does not backfill.",
-				versionedHistorySettingKey, issueID)
-		case errors.Is(err, errVersionsUnsupported):
-			return HandleErrorRespectJSON(
-				"this storage backend cannot serve version history (proxied, no-db and non-Dolt backends cannot).\n" +
-					"Run this against a Dolt-backed workspace.")
-		case err != nil:
-			return HandleErrorRespectJSON("failed to list versions: %v", err)
+		if handled := versionsExitError(err, issueID); handled != nil {
+			return handled
 		}
 
 		if jsonOutput {
@@ -124,6 +138,35 @@ Examples:
 		printVersions(issueID, outcome)
 		return nil
 	},
+}
+
+// versionsExitError maps runVersions' sentinel errors to the ExitVersions*
+// codes above, pulled out of RunE so both the command and its tests share
+// one place that knows the mapping -- tests can exercise it directly against
+// a sentinel error without needing a store that survives
+// utils.ResolvePartialID's own SearchIssues call. nil in, nil out: no error,
+// no refusal, the caller falls through to rendering the outcome.
+func versionsExitError(err error, issueID string) error {
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, errNoSuchBead):
+		return HandleErrorRespectJSONWithCode(ExitVersionsNotFound,
+			"no bead %s in this store, and no versions recorded under that id.", issueID)
+	case errors.Is(err, errVersionedHistoryOff):
+		return HandleErrorRespectJSONWithCode(ExitVersionsFeatureOff,
+			"versioned history is not being recorded on this store, and nothing was recorded earlier.\n"+
+				"Turn it on with:  bd config set %s true\n"+
+				"or for one run:   BD_VERSIONED_HISTORY_ENABLED=1 bd versions %s\n"+
+				"Recording starts from that point on; it does not backfill.",
+			versionedHistorySettingKey, issueID)
+	case errors.Is(err, errVersionsUnsupported):
+		return HandleErrorRespectJSONWithCode(ExitVersionsUnsupported,
+			"this storage backend cannot serve version history (proxied, no-db and non-Dolt backends cannot).\n"+
+				"Run this against a Dolt-backed workspace.")
+	default:
+		return HandleErrorRespectJSON("failed to list versions: %v", err)
+	}
 }
 
 // runVersions is the testable core. It separates four situations that all
@@ -152,6 +195,7 @@ func runVersions(ctx context.Context, backend any, issueID string, recording, re
 	if err != nil {
 		return versionsOutcome{}, err
 	}
+	normalizeRemovedRestrictions(versions)
 	if len(versions) > 0 {
 		// Something was recorded. Whether recording is on right now changes
 		// the footnote, never whether these rows are shown.
@@ -166,6 +210,32 @@ func runVersions(ctx context.Context, backend any, issueID string, recording, re
 		return versionsOutcome{}, errVersionedHistoryOff
 	}
 	return versionsOutcome{Recording: true}, nil
+}
+
+// normalizeRemovedRestrictions closes the gap between the SQL layer and
+// --json. ListVersionsInTx's `COALESCE(removed_restriction, ”) AS
+// removed_restriction` reads a legacy or unset row back as "", and that raw
+// "" was flowing straight into JSON output unnormalized while the text
+// renderer (restrictionLabel) already treated "" and "unknown" as the same
+// answer -- an inconsistency between the command's two front ends. "unknown"
+// means this store has no lineage knowledge; it is a specific,
+// machine-readable answer, not a stand-in for silence, so the raw empty
+// string must not reach a script unlabelled.
+//
+// Only touches Removed() rows: RemovedRestriction is meaningless on a live
+// version (RemovedAt == nil), and normalizing it there would fabricate a
+// removal that never happened.
+//
+// Mirrors the normalization issueops.AsOfReadInTx already applies to this
+// same column (asof_read.go) -- same value, not a shared type, since
+// storage.IssueVersion cannot import issueops.AsOfRestriction without a
+// cycle (issueops imports storage).
+func normalizeRemovedRestrictions(versions []storage.IssueVersion) {
+	for i := range versions {
+		if versions[i].Removed() && versions[i].RemovedRestriction == "" {
+			versions[i].RemovedRestriction = string(issueops.AsOfRestrictionUnknown)
+		}
+	}
 }
 
 // versionListerFor finds the VersionLister behind whatever cmd/bd is holding.
