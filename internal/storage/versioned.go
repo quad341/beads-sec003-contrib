@@ -13,6 +13,7 @@ type HistoryEntry struct {
 	Committer  string       // Who made the commit
 	CommitDate time.Time    // When the commit was made
 	Issue      *types.Issue // The issue state at that commit
+	DiffType   string       // "added", "modified", or "removed" at this commit
 }
 
 // DiffEntry represents a change between two commits.

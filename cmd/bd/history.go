@@ -105,7 +105,8 @@ func runHistory(ctx context.Context, backend historyBackend, issueID string, lim
 		ui.RenderAccent("📜"), issueID, len(history))
 
 	for i, entry := range history {
-		fmt.Printf("%s %s\n",
+		fmt.Printf("%s %s %s\n",
+			diffTypeSymbol(entry.DiffType),
 			ui.RenderMuted(entry.CommitHash[:8]),
 			ui.RenderMuted(entry.CommitDate.Format("2006-01-02 15:04:05")))
 		fmt.Printf("  Author: %s\n", entry.Committer)
@@ -126,6 +127,19 @@ func runHistory(ctx context.Context, backend historyBackend, issueID string, lim
 	}
 	fmt.Println()
 	return nil
+}
+
+// diffTypeSymbol renders a history entry's diff type using the same +/~/-
+// convention as `bd diff` (cmd/bd/diff.go).
+func diffTypeSymbol(diffType string) string {
+	switch diffType {
+	case "added":
+		return ui.RenderAccent("+")
+	case "removed":
+		return ui.RenderAccent("-")
+	default:
+		return ui.RenderAccent("~")
+	}
 }
 
 func init() {

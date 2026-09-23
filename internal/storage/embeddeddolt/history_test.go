@@ -19,14 +19,25 @@ const migration0049DDL = "ALTER TABLE issues " +
 	"MODIFY COLUMN acceptance_criteria LONGTEXT NOT NULL, " +
 	"MODIFY COLUMN notes LONGTEXT NOT NULL"
 
-// TestHistory_NullTextColumns reproduces GH#4867: dolt_history_issues
-// projects every historical row against the CURRENT branch-head schema. A
-// row committed while the issues text columns were still TEXT (pre-0049)
-// type-mismatches the post-0049 LONGTEXT column definition when Dolt
-// re-projects it, which surfaces as NULL rather than the original value.
-// This is real migration behavior, not a hand-written NULL row: schema
-// widening never mutates existing row bytes, only the type Dolt uses to
-// project them.
+// TestHistory_NullTextColumns guards the same real-world scenario as
+// GH#4867 (a row committed while the issues text columns were still TEXT
+// pre-0049, later widened to LONGTEXT NOT NULL by migration 0049) but under
+// dolt_diff_issues instead of dolt_history_issues. This is real migration
+// behavior, not a hand-written NULL row: schema widening never mutates
+// existing row bytes, only the type used to decode them.
+//
+// Unlike dolt_history_issues (which re-projects every historical row
+// against the CURRENT branch-head schema, surfacing a type-mismatched
+// TEXT-era row as NULL), dolt_diff_issues decodes each side of a diff using
+// the schema at that side's own commit -- so this scenario no longer
+// produces a NULL to begin with. The regression this test actually guards
+// is narrower but still real: HistoryInTx's COALESCE(to_X, from_X, ”)
+// three-argument fallback must not crash or mis-scan when a text column
+// legitimately comes back NULL from the query (e.g. the "from" side of an
+// added-row diff, which has no prior state). A bare two-argument COALESCE,
+// or scanning straight into a non-nullable Go string, would error out with
+// "converting NULL to string is unsupported" on that row instead of
+// producing "".
 func TestHistory_NullTextColumns(t *testing.T) {
 	skipUnlessEmbeddedDolt(t)
 
@@ -41,8 +52,9 @@ func TestHistory_NullTextColumns(t *testing.T) {
 		t.Fatalf("Commit (TEXT schema): %v", err)
 	}
 
-	// (b) Commit an issue under the pre-0049 TEXT schema. This becomes the
-	// OLDER history entry.
+	// (b) Commit an issue under the pre-0049 TEXT schema. This produces the
+	// OLDEST history entry (diff_type "added": from_X is NULL for every
+	// column, including the four text columns -- there is no prior state).
 	issue := &types.Issue{
 		ID:                 "nh-null1",
 		Title:              "Null history test",
@@ -61,12 +73,22 @@ func TestHistory_NullTextColumns(t *testing.T) {
 		t.Fatalf("Commit: %v", err)
 	}
 
-	// (c) Replay migration 0049's exact DDL, widening to LONGTEXT. The row
-	// data is untouched; only the branch-head column type changes. This
-	// becomes the NEWEST history entry.
+	// (c) Replay migration 0049's exact DDL, widening to LONGTEXT. Schema
+	// changes alone touch no row data, so this produces no diff_issues row
+	// for this issue by itself -- it only changes what schema a later edit's
+	// "to" side is decoded under.
 	te.exec(t, ctx, migration0049DDL)
 	if err := te.store.Commit(ctx, "replay migration 0049 (TEXT -> LONGTEXT)"); err != nil {
 		t.Fatalf("Commit (migration 0049): %v", err)
+	}
+
+	// (d) A real post-migration edit, so the issue has a second, "modified"
+	// diff row under the LONGTEXT schema -- the newest history entry.
+	if err := te.store.UpdateIssue(ctx, issue.ID, map[string]interface{}{"title": "Null history test v2"}, "tester"); err != nil {
+		t.Fatalf("UpdateIssue: %v", err)
+	}
+	if err := te.store.Commit(ctx, "edit title under LONGTEXT schema"); err != nil {
+		t.Fatalf("Commit (edit): %v", err)
 	}
 
 	history, err := te.store.History(ctx, issue.ID)
@@ -77,8 +99,9 @@ func TestHistory_NullTextColumns(t *testing.T) {
 		t.Fatalf("expected at least 2 history entries, got %d", len(history))
 	}
 
-	// Newest entry (post-migration commit): schema matches branch head, so
-	// the real values project through untouched.
+	// Newest entry (post-migration edit, diff_type "modified"): to_X is a
+	// fresh LONGTEXT-schema write, so the unedited text columns project
+	// through untouched.
 	newest := history[0].Issue
 	if newest.Description != issue.Description {
 		t.Errorf("expected newest description %q, got %q", issue.Description, newest.Description)
@@ -93,21 +116,26 @@ func TestHistory_NullTextColumns(t *testing.T) {
 		t.Errorf("expected newest notes %q, got %q", issue.Notes, newest.Notes)
 	}
 
-	// Older entry (pre-migration commit, TEXT-era): re-projected against the
-	// current LONGTEXT schema, the type mismatch surfaces as NULL, which the
-	// COALESCE in the scan turns into "".
-	older := history[1].Issue
-	if older.Description != "" {
-		t.Errorf("expected pre-migration description to coalesce to \"\", got %q", older.Description)
+	// Oldest entry (the "added" commit): from_X is NULL for every column on
+	// an added row (nothing existed before it, so to_X is authoritative) --
+	// confirmed empirically, not assumed: to_X carries the value written at
+	// creation time straight through, under the pre-0049 TEXT schema.
+	oldestEntry := history[len(history)-1]
+	if oldestEntry.DiffType != "added" {
+		t.Errorf("expected oldest entry diff_type %q, got %q", "added", oldestEntry.DiffType)
 	}
-	if older.Design != "" {
-		t.Errorf("expected pre-migration design to coalesce to \"\", got %q", older.Design)
+	oldest := oldestEntry.Issue
+	if oldest.Description != issue.Description {
+		t.Errorf("expected oldest description %q, got %q", issue.Description, oldest.Description)
 	}
-	if older.AcceptanceCriteria != "" {
-		t.Errorf("expected pre-migration acceptance_criteria to coalesce to \"\", got %q", older.AcceptanceCriteria)
+	if oldest.Design != issue.Design {
+		t.Errorf("expected oldest design %q, got %q", issue.Design, oldest.Design)
 	}
-	if older.Notes != "" {
-		t.Errorf("expected pre-migration notes to coalesce to \"\", got %q", older.Notes)
+	if oldest.AcceptanceCriteria != issue.AcceptanceCriteria {
+		t.Errorf("expected oldest acceptance_criteria %q, got %q", issue.AcceptanceCriteria, oldest.AcceptanceCriteria)
+	}
+	if oldest.Notes != issue.Notes {
+		t.Errorf("expected oldest notes %q, got %q", issue.Notes, oldest.Notes)
 	}
 }
 
