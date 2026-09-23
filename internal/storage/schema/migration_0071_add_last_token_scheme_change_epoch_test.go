@@ -22,17 +22,16 @@ import (
 const migration0071Up = "0071_add_last_token_scheme_change_epoch.up.sql"
 const migration0071Down = "0071_add_last_token_scheme_change_epoch.down.sql"
 
-// TestLatestVersionIncludesMigration0071 (pinning LatestVersion() == 71)
-// supersedes TestLatestVersionIncludesMigration0070
-// (migration_0070_add_epoch_minted_addresses_test.go) now that 0071 claims
-// the next free slot -- only one such pin lives at a time, matching how 0070
-// itself already superseded 0069's.
-func TestLatestVersionIncludesMigration0071(t *testing.T) {
-	const want = 71
-	if got := LatestVersion(); got != want {
-		t.Fatalf("LatestVersion() = %d, want %d (last_token_scheme_change_epoch migration slot claimed by be-dnykf)", got, want)
-	}
-}
+// TestLatestVersionIncludesMigration0071 (pinning LatestVersion() == 71) is
+// superseded by TestLatestVersionIncludesMigration0072
+// (migration_0072_add_expected_revision_records_test.go) now that 0072
+// claims the next free slot -- only one such pin lives at a time, matching
+// how this test itself already superseded 0070's.
+//
+// 0072 is R16's per-record CAS (be-x5jqd.3), not a continuation of this
+// slice's own R20-n work -- it landed here because be-mw8o9's rebase onto
+// current main fixed the stubbed CAS leg on top of this stack rather than
+// mid-stack, to avoid re-opening the 0069/0070/0071 supersession chain.
 
 // TestMigration0071AddsLastTokenSchemeChangeEpoch is a pure-Go, DB-independent
 // check of the frozen migration bytes themselves — it runs even where no
