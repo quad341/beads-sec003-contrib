@@ -85,6 +85,15 @@ func TestEpochContract(t *testing.T) {
 	t.Run("TokenSchemeChangeEpochBumpRetainsAnAddressViaMapping", func(t *testing.T) {
 		conformance.RunTokenSchemeChangeEpochBumpRetainsAnAddressViaMapping(t, ctx, fixture)
 	})
+	t.Run("ATokenSchemeChangeBridgeSurvivesALaterRestore", func(t *testing.T) {
+		conformance.RunATokenSchemeChangeBridgeSurvivesALaterRestore(t, ctx, fixture)
+	})
+	t.Run("EachTokenSchemeChangeNeedsItsOwnBridge", func(t *testing.T) {
+		conformance.RunEachTokenSchemeChangeNeedsItsOwnBridge(t, ctx, fixture)
+	})
+	t.Run("ATokenSchemeChangeBridgeSurvivesRestoresOnEitherSide", func(t *testing.T) {
+		conformance.RunATokenSchemeChangeBridgeSurvivesRestoresOnEitherSide(t, ctx, fixture)
+	})
 }
 
 // newEpochDoltFixture wires this leg's *DoltStore into the R20 epoch
