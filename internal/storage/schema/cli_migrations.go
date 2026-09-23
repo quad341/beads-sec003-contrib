@@ -157,6 +157,16 @@ func cliCompatibleMigrationSQL(name, sqlText string) string {
 		// series -- and never carries removed_restriction yet, so the column
 		// always needs adding on a fresh bundle.
 		return cliMigration0069AddRemovedRestriction
+	case "0071_add_last_token_scheme_change_epoch.up.sql":
+		// Direct DDL for the same reason as 0067/0068/0069: the source
+		// migration's PREPARE guard (an INFORMATION_SCHEMA probe) is what
+		// makes the raw .up.sql idempotent when replayed onto an
+		// already-migrated store, and the 2.2.x CLI no-ops a prepared ADD
+		// COLUMN. store_epoch is always present here -- 0067 runs earlier
+		// in the same fresh-bundle series -- and never carries
+		// last_token_scheme_change_epoch yet, so the column always needs
+		// adding on a fresh bundle.
+		return cliMigration0071AddLastTokenSchemeChangeEpoch
 	default:
 		return sqlText
 	}
@@ -285,6 +295,13 @@ ALTER TABLE issue_versions MODIFY COLUMN durable_state LONGBLOB;`
 // issue_versions is created earlier in the same series by 0067 and never
 // carries removed_restriction yet, so the column always needs adding here.
 const cliMigration0069AddRemovedRestriction = `ALTER TABLE issue_versions ADD COLUMN removed_restriction VARCHAR(30);`
+
+// cliMigration0071AddLastTokenSchemeChangeEpoch is 0071 with its one guarded
+// PREPARE block replaced by the direct ALTER it would run on a fresh
+// database. store_epoch is created earlier in the same series by 0067 and
+// never carries last_token_scheme_change_epoch yet, so the column always
+// needs adding here.
+const cliMigration0071AddLastTokenSchemeChangeEpoch = `ALTER TABLE store_epoch ADD COLUMN last_token_scheme_change_epoch INT NULL;` // #nosec G101 -- SQL DDL text; "Token" is part of the column name, not a credential
 
 const cliMigration0041SplitDependenciesTarget = `DELETE FROM dolt_nonlocal_tables;
 CALL DOLT_COMMIT('-Am', 'disable nonlocal tables for fk migrations');
