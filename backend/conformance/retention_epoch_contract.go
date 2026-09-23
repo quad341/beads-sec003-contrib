@@ -1046,6 +1046,213 @@ func RunTokenSchemeChangeEpochBumpRetainsAnAddressViaMapping(t *testing.T, ctx c
 	}
 }
 
+// RunATokenSchemeChangeBridgeSurvivesALaterRestore pins R20-n's multi-bump
+// generalization (architect ruling, be-bo451, gastownhall/beads#6681) for a
+// case a rule anchored to only "the store's latest bump trigger" cannot
+// express: a Version bridged into a new token scheme via the retained
+// mapping, then left untouched through a LATER Restore. Restore has no
+// retained-mapping mechanism of its own (RunEpochBumpPreservesAnUntouchedAddressWithNoRemint's
+// rule is "no mint since the original mint"), so naively applying the
+// latest bump's own rule here would see the bridge mint itself as a
+// disqualifying later mint and wrongly report Gone. The correct anchor is
+// the most recent token-scheme-change epoch specifically, not the most
+// recent bump of any kind.
+func RunATokenSchemeChangeBridgeSurvivesALaterRestore(t *testing.T, ctx context.Context, fixture EpochFixture) {
+	t.Helper()
+	if fixture.MintUnderEpoch == nil {
+		t.Skip("this backend has no way to mint a Version under a known epoch (MintUnderEpoch is nil)")
+	}
+	if fixture.BumpEpoch == nil {
+		t.Skip("this backend has no epoch concept yet (BumpEpoch is nil)")
+	}
+	if fixture.StillServes == nil {
+		t.Skip("this backend cannot report whether it still serves a prior-epoch Version (StillServes is nil)")
+	}
+	if fixture.Resolve == nil {
+		t.Skip("this backend does not yet report retention state (Resolve is nil)")
+	}
+	store := epochStore(fixture, "bridge-then-restore")
+
+	original, err := fixture.MintUnderEpoch(ctx, store, "record-a")
+	if err != nil {
+		t.Fatalf("MintUnderEpoch(record-a): %v", err)
+	}
+
+	if _, err := fixture.BumpEpoch(ctx, store, EpochBumpTriggerTokenSchemeChange); err != nil {
+		t.Fatalf("BumpEpoch(token-scheme-change): %v", err)
+	}
+	// Bridge once, at the scheme-change epoch.
+	if _, err := fixture.MintUnderEpoch(ctx, store, "record-a"); err != nil {
+		t.Fatalf("MintUnderEpoch(record-a) [bridge]: %v", err)
+	}
+
+	finalEpoch, err := fixture.BumpEpoch(ctx, store, EpochBumpTriggerRestore)
+	if err != nil {
+		t.Fatalf("BumpEpoch(restore): %v", err)
+	}
+	// Nothing minted since the bridge.
+
+	serves, err := fixture.StillServes(ctx, store, original)
+	if err != nil {
+		t.Fatalf("StillServes(%s): %v", original, err)
+	}
+	if !serves {
+		t.Errorf("StillServes(original address bridged into a token-scheme change, then left untouched through a later restore) = false, want true: the bridge survives a subsequent restore that did not touch the encoding")
+	}
+
+	answer, err := fixture.Resolve(ctx, store, original)
+	if err != nil {
+		t.Fatalf("Resolve(%s): %v", original, err)
+	}
+	if answer.Restriction != RestrictionLive {
+		t.Errorf("Resolve(original address bridged into a token-scheme change, then left untouched through a later restore) = %s, want RestrictionLive", answer.Restriction)
+	}
+	if answer.Epoch == nil {
+		t.Errorf("Resolve(original address bridged into a token-scheme change, then left untouched through a later restore).Epoch = nil, want the current epoch populated")
+	} else if *answer.Epoch != finalEpoch {
+		t.Errorf("Resolve(original address bridged into a token-scheme change, then left untouched through a later restore).Epoch = %d, want the current epoch %d", *answer.Epoch, finalEpoch)
+	}
+}
+
+// RunEachTokenSchemeChangeNeedsItsOwnBridge pins the other half of R20-n's
+// multi-bump generalization: a bridge made for ONE token-scheme change does
+// not carry an address through a SECOND, later one. Each scheme change
+// re-encodes addresses again, so a Version bridged only at the first is
+// exactly as unreached by the second as a Version that was never bridged at
+// all — R20-n's no-self-healing invariant applies to the most recent scheme
+// change specifically. This is also the case a naive "any bump in range had
+// a matching mint" generalization would get wrong in the other direction, by
+// crediting the stale first-scheme-change bridge.
+func RunEachTokenSchemeChangeNeedsItsOwnBridge(t *testing.T, ctx context.Context, fixture EpochFixture) {
+	t.Helper()
+	if fixture.MintUnderEpoch == nil {
+		t.Skip("this backend has no way to mint a Version under a known epoch (MintUnderEpoch is nil)")
+	}
+	if fixture.BumpEpoch == nil {
+		t.Skip("this backend has no epoch concept yet (BumpEpoch is nil)")
+	}
+	if fixture.StillServes == nil {
+		t.Skip("this backend cannot report whether it still serves a prior-epoch Version (StillServes is nil)")
+	}
+	if fixture.Resolve == nil {
+		t.Skip("this backend does not yet report retention state (Resolve is nil)")
+	}
+	store := epochStore(fixture, "bridge-only-first-scheme-change")
+
+	original, err := fixture.MintUnderEpoch(ctx, store, "record-a")
+	if err != nil {
+		t.Fatalf("MintUnderEpoch(record-a): %v", err)
+	}
+
+	if _, err := fixture.BumpEpoch(ctx, store, EpochBumpTriggerTokenSchemeChange); err != nil {
+		t.Fatalf("BumpEpoch(token-scheme-change) [first]: %v", err)
+	}
+	// Bridge only at the FIRST scheme change.
+	firstBridge, err := fixture.MintUnderEpoch(ctx, store, "record-a")
+	if err != nil {
+		t.Fatalf("MintUnderEpoch(record-a) [first bridge]: %v", err)
+	}
+
+	if _, err := fixture.BumpEpoch(ctx, store, EpochBumpTriggerRestore); err != nil {
+		t.Fatalf("BumpEpoch(restore): %v", err)
+	}
+
+	finalEpoch, err := fixture.BumpEpoch(ctx, store, EpochBumpTriggerTokenSchemeChange)
+	if err != nil {
+		t.Fatalf("BumpEpoch(token-scheme-change) [second]: %v", err)
+	}
+	// No bridge at the second scheme change.
+
+	for _, addr := range []Address{original, firstBridge} {
+		serves, err := fixture.StillServes(ctx, store, addr)
+		if err != nil {
+			t.Fatalf("StillServes(%s): %v", addr, err)
+		}
+		if serves {
+			t.Errorf("StillServes(%s, bridged only at an earlier token-scheme change, not the most recent one) = true, want false: a missing bridge at the most recent scheme change is permanent", addr)
+		}
+
+		answer, err := fixture.Resolve(ctx, store, addr)
+		if err != nil {
+			t.Fatalf("Resolve(%s): %v", addr, err)
+		}
+		if answer.Restriction != RestrictionGoneReorganization {
+			t.Errorf("Resolve(%s, bridged only at an earlier token-scheme change) = %s, want RestrictionGoneReorganization", addr, answer.Restriction)
+		}
+		if answer.Epoch == nil {
+			t.Errorf("Resolve(%s, bridged only at an earlier token-scheme change).Epoch = nil, want the current epoch populated", addr)
+		} else if *answer.Epoch != finalEpoch {
+			t.Errorf("Resolve(%s, bridged only at an earlier token-scheme change).Epoch = %d, want the current epoch %d", addr, *answer.Epoch, finalEpoch)
+		}
+	}
+}
+
+// RunATokenSchemeChangeBridgeSurvivesRestoresOnEitherSide is the
+// leading-Restore mirror of RunATokenSchemeChangeBridgeSurvivesALaterRestore:
+// a Restore BEFORE the scheme change must not disturb the bridge anchor
+// either. Restore never sets the store's most-recent-scheme-change marker,
+// however many of them occur before or after the one scheme change that
+// does.
+func RunATokenSchemeChangeBridgeSurvivesRestoresOnEitherSide(t *testing.T, ctx context.Context, fixture EpochFixture) {
+	t.Helper()
+	if fixture.MintUnderEpoch == nil {
+		t.Skip("this backend has no way to mint a Version under a known epoch (MintUnderEpoch is nil)")
+	}
+	if fixture.BumpEpoch == nil {
+		t.Skip("this backend has no epoch concept yet (BumpEpoch is nil)")
+	}
+	if fixture.StillServes == nil {
+		t.Skip("this backend cannot report whether it still serves a prior-epoch Version (StillServes is nil)")
+	}
+	if fixture.Resolve == nil {
+		t.Skip("this backend does not yet report retention state (Resolve is nil)")
+	}
+	store := epochStore(fixture, "restore-bridge-restore")
+
+	original, err := fixture.MintUnderEpoch(ctx, store, "record-a")
+	if err != nil {
+		t.Fatalf("MintUnderEpoch(record-a): %v", err)
+	}
+
+	if _, err := fixture.BumpEpoch(ctx, store, EpochBumpTriggerRestore); err != nil {
+		t.Fatalf("BumpEpoch(restore) [leading]: %v", err)
+	}
+	if _, err := fixture.BumpEpoch(ctx, store, EpochBumpTriggerTokenSchemeChange); err != nil {
+		t.Fatalf("BumpEpoch(token-scheme-change): %v", err)
+	}
+	// Bridge at the scheme-change epoch.
+	if _, err := fixture.MintUnderEpoch(ctx, store, "record-a"); err != nil {
+		t.Fatalf("MintUnderEpoch(record-a) [bridge]: %v", err)
+	}
+
+	finalEpoch, err := fixture.BumpEpoch(ctx, store, EpochBumpTriggerRestore)
+	if err != nil {
+		t.Fatalf("BumpEpoch(restore) [trailing]: %v", err)
+	}
+	// Nothing minted since the bridge.
+
+	serves, err := fixture.StillServes(ctx, store, original)
+	if err != nil {
+		t.Fatalf("StillServes(%s): %v", original, err)
+	}
+	if !serves {
+		t.Errorf("StillServes(original address bridged into a token-scheme change with a restore on each side) = false, want true")
+	}
+
+	answer, err := fixture.Resolve(ctx, store, original)
+	if err != nil {
+		t.Fatalf("Resolve(%s): %v", original, err)
+	}
+	if answer.Restriction != RestrictionLive {
+		t.Errorf("Resolve(original address bridged into a token-scheme change with a restore on each side) = %s, want RestrictionLive", answer.Restriction)
+	}
+	if answer.Epoch == nil {
+		t.Errorf("Resolve(original address bridged into a token-scheme change with a restore on each side).Epoch = nil, want the current epoch populated")
+	} else if *answer.Epoch != finalEpoch {
+		t.Errorf("Resolve(original address bridged into a token-scheme change with a restore on each side).Epoch = %d, want the current epoch %d", *answer.Epoch, finalEpoch)
+	}
+}
+
 // --- fixture helpers -------------------------------------------------------
 
 // retentionStore names a storeID namespaced by the fixture's IssuePrefix and
