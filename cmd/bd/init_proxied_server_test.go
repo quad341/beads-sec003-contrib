@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"os"
 	"testing"
 	"time"
 
@@ -13,13 +14,13 @@ import (
 
 func TestBuildProxiedServerClientInfo(t *testing.T) {
 	t.Run("all empty returns nil", func(t *testing.T) {
-		info, err := buildProxiedServerClientInfo("", "", "", 0, 0, nil)
+		info, err := buildProxiedServerClientInfo("", "", "", 0, 0, false, nil)
 		require.NoError(t, err)
 		assert.Nil(t, info)
 	})
 
 	t.Run("port alone is persisted", func(t *testing.T) {
-		info, err := buildProxiedServerClientInfo("", "", "", 3306, 0, nil)
+		info, err := buildProxiedServerClientInfo("", "", "", 3306, 0, false, nil)
 		require.NoError(t, err)
 		require.NotNil(t, info)
 		assert.Equal(t, 3306, info.Port)
@@ -27,7 +28,7 @@ func TestBuildProxiedServerClientInfo(t *testing.T) {
 	})
 
 	t.Run("idle timeout alone is persisted", func(t *testing.T) {
-		info, err := buildProxiedServerClientInfo("", "", "", 0, 5*time.Minute, nil)
+		info, err := buildProxiedServerClientInfo("", "", "", 0, 5*time.Minute, false, nil)
 		require.NoError(t, err)
 		require.NotNil(t, info)
 		assert.Equal(t, 5*time.Minute, info.IdleTimeout)
@@ -36,7 +37,7 @@ func TestBuildProxiedServerClientInfo(t *testing.T) {
 
 	t.Run("never sentinel is persisted and survives a round-trip", func(t *testing.T) {
 		dir := t.TempDir()
-		info, err := buildProxiedServerClientInfo("", "", "", 0, proxy.IdleTimeoutNever, nil)
+		info, err := buildProxiedServerClientInfo("", "", "", 0, proxy.IdleTimeoutNever, false, nil)
 		require.NoError(t, err)
 		require.NotNil(t, info)
 		assert.Equal(t, proxy.IdleTimeoutNever, info.IdleTimeout)
@@ -49,7 +50,7 @@ func TestBuildProxiedServerClientInfo(t *testing.T) {
 
 	t.Run("port and idle timeout survive a round-trip via SaveProxiedServerClientInfo", func(t *testing.T) {
 		dir := t.TempDir()
-		info, err := buildProxiedServerClientInfo("", "", "", 3306, 5*time.Minute, nil)
+		info, err := buildProxiedServerClientInfo("", "", "", 3306, 5*time.Minute, false, nil)
 		require.NoError(t, err)
 		require.NotNil(t, info)
 		require.NoError(t, configfile.SaveProxiedServerClientInfo(dir, info))
@@ -61,7 +62,7 @@ func TestBuildProxiedServerClientInfo(t *testing.T) {
 	})
 
 	t.Run("absolute paths pass through cleaned", func(t *testing.T) {
-		info, err := buildProxiedServerClientInfo("/var/lib/beads/proxieddb", "/etc/dolt/server.yaml", "/var/log/server.log", 0, 0, nil)
+		info, err := buildProxiedServerClientInfo("/var/lib/beads/proxieddb", "/etc/dolt/server.yaml", "/var/log/server.log", 0, 0, false, nil)
 		require.NoError(t, err)
 		require.NotNil(t, info)
 		assert.Equal(t, "/var/lib/beads/proxieddb", info.RootPath)
@@ -71,14 +72,14 @@ func TestBuildProxiedServerClientInfo(t *testing.T) {
 	})
 
 	t.Run("filepath.Clean normalizes redundant separators and . segments", func(t *testing.T) {
-		info, err := buildProxiedServerClientInfo("/var/lib//beads/./proxieddb", "", "", 0, 0, nil)
+		info, err := buildProxiedServerClientInfo("/var/lib//beads/./proxieddb", "", "", 0, 0, false, nil)
 		require.NoError(t, err)
 		require.NotNil(t, info)
 		assert.Equal(t, "/var/lib/beads/proxieddb", info.RootPath)
 	})
 
 	t.Run("mixed absolute + empty", func(t *testing.T) {
-		info, err := buildProxiedServerClientInfo("/var/lib/beads/proxieddb", "", "/var/log/server.log", 0, 0, nil)
+		info, err := buildProxiedServerClientInfo("/var/lib/beads/proxieddb", "", "/var/log/server.log", 0, 0, false, nil)
 		require.NoError(t, err)
 		require.NotNil(t, info)
 		assert.Equal(t, "/var/lib/beads/proxieddb", info.RootPath)
@@ -87,26 +88,26 @@ func TestBuildProxiedServerClientInfo(t *testing.T) {
 	})
 
 	t.Run("relative root path is rejected", func(t *testing.T) {
-		_, err := buildProxiedServerClientInfo("alt-root", "", "", 0, 0, nil)
+		_, err := buildProxiedServerClientInfo("alt-root", "", "", 0, 0, false, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "not absolute")
 	})
 
 	t.Run("relative config path is rejected", func(t *testing.T) {
-		_, err := buildProxiedServerClientInfo("", "configs/server.yaml", "", 0, 0, nil)
+		_, err := buildProxiedServerClientInfo("", "configs/server.yaml", "", 0, 0, false, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "not absolute")
 	})
 
 	t.Run("relative log path is rejected", func(t *testing.T) {
-		_, err := buildProxiedServerClientInfo("", "", "logs/server.log", 0, 0, nil)
+		_, err := buildProxiedServerClientInfo("", "", "logs/server.log", 0, 0, false, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "not absolute")
 	})
 
 	t.Run("absolute paths survive a round-trip through the sidecar resolver", func(t *testing.T) {
 		const beadsDir = "/proj/.beads"
-		info, err := buildProxiedServerClientInfo("/var/lib/beads/proxieddb", "", "", 0, 0, nil)
+		info, err := buildProxiedServerClientInfo("/var/lib/beads/proxieddb", "", "", 0, 0, false, nil)
 		require.NoError(t, err)
 		require.NotNil(t, info)
 		assert.Equal(t, info.RootPath, (&configfile.ProxiedServerClientInfo{RootPath: info.RootPath}).ResolvedRootPath(beadsDir))
@@ -114,7 +115,7 @@ func TestBuildProxiedServerClientInfo(t *testing.T) {
 
 	t.Run("external config alone populates External section", func(t *testing.T) {
 		ext := &configfile.ExternalDoltConfig{Host: "db.internal", Port: 3306}
-		info, err := buildProxiedServerClientInfo("", "", "", 0, 0, ext)
+		info, err := buildProxiedServerClientInfo("", "", "", 0, 0, false, ext)
 		require.NoError(t, err)
 		require.NotNil(t, info)
 		assert.Empty(t, info.RootPath)
@@ -133,7 +134,7 @@ func TestBuildProxiedServerClientInfo(t *testing.T) {
 			TLSCert:     "/etc/beads/client.pem",
 			TLSKey:      "/etc/beads/client.key",
 		}
-		info, err := buildProxiedServerClientInfo("", "", "", 0, 0, ext)
+		info, err := buildProxiedServerClientInfo("", "", "", 0, 0, false, ext)
 		require.NoError(t, err)
 		require.NotNil(t, info.External)
 		assert.True(t, info.External.TLSRequired)
@@ -143,7 +144,7 @@ func TestBuildProxiedServerClientInfo(t *testing.T) {
 
 	t.Run("external unix socket config flows through", func(t *testing.T) {
 		ext := &configfile.ExternalDoltConfig{Socket: "/var/run/dolt.sock"}
-		info, err := buildProxiedServerClientInfo("", "", "", 0, 0, ext)
+		info, err := buildProxiedServerClientInfo("", "", "", 0, 0, false, ext)
 		require.NoError(t, err)
 		require.NotNil(t, info.External)
 		assert.Equal(t, "/var/run/dolt.sock", info.External.Socket)
@@ -152,13 +153,13 @@ func TestBuildProxiedServerClientInfo(t *testing.T) {
 	})
 
 	t.Run("invalid external config is rejected", func(t *testing.T) {
-		_, err := buildProxiedServerClientInfo("", "", "", 0, 0, &configfile.ExternalDoltConfig{})
+		_, err := buildProxiedServerClientInfo("", "", "", 0, 0, false, &configfile.ExternalDoltConfig{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "ExternalDoltConfig")
 	})
 
 	t.Run("invalid external config with tls cert without key is rejected", func(t *testing.T) {
-		_, err := buildProxiedServerClientInfo("", "", "", 0, 0, &configfile.ExternalDoltConfig{
+		_, err := buildProxiedServerClientInfo("", "", "", 0, 0, false, &configfile.ExternalDoltConfig{
 			Host:    "db",
 			Port:    3306,
 			TLSCert: "/etc/beads/client.pem",
@@ -170,7 +171,7 @@ func TestBuildProxiedServerClientInfo(t *testing.T) {
 	t.Run("external survives round-trip via SaveProxiedServerClientInfo", func(t *testing.T) {
 		dir := t.TempDir()
 		ext := &configfile.ExternalDoltConfig{Host: "db.internal", Port: 3306, TLSRequired: true}
-		info, err := buildProxiedServerClientInfo("", "", "", 0, 0, ext)
+		info, err := buildProxiedServerClientInfo("", "", "", 0, 0, false, ext)
 		require.NoError(t, err)
 		require.NotNil(t, info)
 		require.NoError(t, configfile.SaveProxiedServerClientInfo(dir, info))
@@ -181,6 +182,50 @@ func TestBuildProxiedServerClientInfo(t *testing.T) {
 		assert.Equal(t, "db.internal", loaded.External.Host)
 		assert.Equal(t, 3306, loaded.External.Port)
 		assert.True(t, loaded.External.TLSRequired)
+	})
+
+	// be-mo6xj: BEADS_EPHEMERAL_ROOT support persists an Ephemeral marker (plus
+	// the effective idle-window value) on the proxied-server sidecar, so an
+	// ephemeral-root client can tell from the sidecar alone that the proxy is
+	// expected to idle-exit on its own.
+	t.Run("ephemeral true is persisted alongside the effective idle timeout", func(t *testing.T) {
+		info, err := buildProxiedServerClientInfo("", "", "", 0, 45*time.Second, true, nil)
+		require.NoError(t, err)
+		require.NotNil(t, info)
+		assert.True(t, info.Ephemeral)
+		assert.Equal(t, 45*time.Second, info.IdleTimeout)
+	})
+
+	t.Run("ephemeral false leaves existing non-ephemeral behavior unchanged", func(t *testing.T) {
+		info, err := buildProxiedServerClientInfo("", "", "", 0, 5*time.Minute, false, nil)
+		require.NoError(t, err)
+		require.NotNil(t, info)
+		assert.False(t, info.Ephemeral)
+		assert.Equal(t, 5*time.Minute, info.IdleTimeout)
+	})
+
+	t.Run("ephemeral flag survives a round-trip via SaveProxiedServerClientInfo", func(t *testing.T) {
+		dir := t.TempDir()
+		info, err := buildProxiedServerClientInfo("", "", "", 0, 45*time.Second, true, nil)
+		require.NoError(t, err)
+		require.NotNil(t, info)
+		require.NoError(t, configfile.SaveProxiedServerClientInfo(dir, info))
+		loaded, err := configfile.LoadProxiedServerClientInfo(dir)
+		require.NoError(t, err)
+		require.NotNil(t, loaded)
+		assert.True(t, loaded.Ephemeral)
+		assert.Equal(t, 45*time.Second, loaded.IdleTimeout)
+	})
+
+	t.Run("ephemeral true is written as a literal ephemeral key on disk", func(t *testing.T) {
+		dir := t.TempDir()
+		info, err := buildProxiedServerClientInfo("", "", "", 0, 45*time.Second, true, nil)
+		require.NoError(t, err)
+		require.NotNil(t, info)
+		require.NoError(t, configfile.SaveProxiedServerClientInfo(dir, info))
+		raw, err := os.ReadFile(configfile.ProxiedServerClientInfoPath(dir))
+		require.NoError(t, err)
+		assert.Contains(t, string(raw), `"ephemeral": true`)
 	})
 }
 

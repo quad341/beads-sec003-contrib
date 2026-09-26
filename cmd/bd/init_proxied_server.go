@@ -154,7 +154,10 @@ func runInitProxiedServer(cmd *cobra.Command, ctx context.Context, in initProxie
 	}
 	configYAMLBody := renderInitConfigYAML("", false)
 
-	clientInfo, err := buildProxiedServerClientInfo(in.serverRootPath, in.serverConfigPath, in.serverLogPath, in.serverProxyPort, in.serverProxyIdleTimeout, in.externalConfig)
+	// TODO(be-mo6xj GREEN): thread the real ephemeral-root signal here instead
+	// of this false placeholder (needs a new initProxiedServerInput field
+	// populated from init.go's ephemeralRoot local).
+	clientInfo, err := buildProxiedServerClientInfo(in.serverRootPath, in.serverConfigPath, in.serverLogPath, in.serverProxyPort, in.serverProxyIdleTimeout, false, in.externalConfig)
 	if err != nil {
 		return err
 	}
@@ -466,7 +469,12 @@ func composeProxiedServerMetadataJSON(in proxiedMetadataInputs) ([]byte, error) 
 	return json.MarshalIndent(cfg, "", "  ")
 }
 
-func buildProxiedServerClientInfo(rootPath, configPath, logPath string, port int, idleTimeout time.Duration, external *configfile.ExternalDoltConfig) (*configfile.ProxiedServerClientInfo, error) {
+func buildProxiedServerClientInfo(rootPath, configPath, logPath string, port int, idleTimeout time.Duration, ephemeral bool, external *configfile.ExternalDoltConfig) (*configfile.ProxiedServerClientInfo, error) {
+	// NOTE(be-mo6xj RED): ephemeral is accepted but not yet threaded into the
+	// returned struct - that wiring is the GREEN step. Whenever ephemeral is
+	// true, idleTimeout is already guaranteed non-zero by
+	// effectiveEphemeralIdleTimeout's default (see cmd/bd/proxied_server.go),
+	// so this early-return guard does not need its own ephemeral check.
 	if rootPath == "" && configPath == "" && logPath == "" && port == 0 && idleTimeout == 0 && external == nil {
 		return nil, nil
 	}

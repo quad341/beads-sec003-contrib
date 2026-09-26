@@ -16,6 +16,7 @@ type ProxiedServerClientInfo struct {
 	LogPath     string              `json:"log_path,omitempty"`
 	Port        int                 `json:"port,omitempty"`
 	IdleTimeout time.Duration       `json:"idle_timeout,omitempty"`
+	Ephemeral   bool                `json:"ephemeral,omitempty"`
 	External    *ExternalDoltConfig `json:"external,omitempty"`
 }
 
