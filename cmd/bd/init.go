@@ -660,6 +660,7 @@ Non-interactive mode (--non-interactive or BD_NON_INTERACTIVE=1):
 				serverRootPath:         serverRootPath,
 				serverProxyPort:        serverProxyPort,
 				serverProxyIdleTimeout: serverProxyIdleTimeout,
+				ephemeralRoot:          ephemeralRoot,
 				externalConfig:         externalConfig,
 				quiet:                  quiet,
 				stealth:                stealth,

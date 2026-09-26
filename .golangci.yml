@@ -608,13 +608,6 @@ linters:
         linters:
           - unparam
         text: 'getLinearConfig'
-      # unparam: be-mo6xj TDD red step - ephemeral is accepted but not yet
-      # wired into the returned struct; wiring lands in the green step, at
-      # which point this exclusion is removed.
-      - path: 'cmd/bd/init_proxied_server\.go'
-        linters:
-          - unparam
-        text: 'buildProxiedServerClientInfo'
       # misspell: "cancelled" is intentional - matching GitHub API response values
       - path: 'cmd/bd/gate\.go'
         linters:
