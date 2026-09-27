@@ -283,6 +283,7 @@ These are written to the Dolt database by `bd config set` and have no env var ov
 | `max_collision_prob` | Hash ID collision tolerance (default `0.25`) |
 | `claim.pools` | Comma-separated pool aliases: placeholder assignees that any actor can take with `bd update <id> --claim` (see [below](#claim-pools)). Unset by default, which turns pool claiming off |
 | `doctor.suppress.*` | Suppress specific `bd doctor` warnings by check slug (warnings only; errors always show) |
+| `versioned-history.enabled` | Enables dual-write issue-version history for this rig's store instance only (default `false`, fail-open if unreadable); read fresh at store-construction time, so flipping it back is a plain config change — no rebuild or restart |
 
 Issue prefix (`issue_prefix`) is **not** settable via `bd config set` — use `bd init --prefix`, `bd bootstrap`, or `bd rename-prefix`.
 
