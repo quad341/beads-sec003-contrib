@@ -130,13 +130,24 @@ func initBdProject(t *testing.T, name string) string {
 
 // dataDir returns the embedded Dolt data directory bd init created under
 // dir, where the actual dolt_log/dolt_commit_diff_* system tables live.
+//
+// filepath.Glob's "*" matches dotfiles (unlike a shell glob without
+// dotglob), and embeddeddolt/ also holds a sibling ".lock" file next to the
+// real data directory -- so matches must be filtered to directories, not
+// just taken as matches[0], or this resolves to the lock file instead.
 func dataDir(t *testing.T, dir string) string {
 	t.Helper()
 	matches, err := filepath.Glob(filepath.Join(dir, ".beads", "embeddeddolt", "*"))
-	if err != nil || len(matches) == 0 {
-		t.Fatalf("could not find embedded dolt data dir under %s: err=%v matches=%v", dir, err, matches)
+	if err != nil {
+		t.Fatalf("could not find embedded dolt data dir under %s: err=%v", dir, err)
 	}
-	return matches[0]
+	for _, m := range matches {
+		if info, statErr := os.Stat(m); statErr == nil && info.IsDir() {
+			return m
+		}
+	}
+	t.Fatalf("could not find embedded dolt data dir under %s: no directory among matches=%v", dir, matches)
+	return ""
 }
 
 // headCommit returns the current HEAD commit hash in dir (a dataDir), via
