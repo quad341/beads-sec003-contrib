@@ -422,10 +422,16 @@ func TestClassifyAndExecute_DepRemove(t *testing.T) {
 	a := jsonID(t, outA)
 	outB := runBd(t, fx.sourceDir, "create", "Widget B", "--description", "desc B", "--type", "task", "--json")
 	b := jsonID(t, outB)
-	runBd(t, fx.sourceDir, "dep", "add", a, b)
 
+	// mustClassifyHead spans genesis..now: the source-side dep add must not
+	// land until after both creates are replayed into the work clone, or the
+	// wide range sweeps the dependency edge into issue A's create replay and
+	// Execute fails (B doesn't exist in the work clone yet at that point) --
+	// empirically confirmed via the be-2cp1d bead notes recon script.
 	applyActions(t, fx.workDir, mustClassifyHead(t, fx, a))
 	applyActions(t, fx.workDir, mustClassifyHead(t, fx, b))
+
+	runBd(t, fx.sourceDir, "dep", "add", a, b)
 	runBd(t, fx.workDir, "dep", "add", a, b)
 
 	from := headCommit(t, fx.source)
