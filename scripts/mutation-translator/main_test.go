@@ -484,12 +484,25 @@ func TestClassifyAndExecute_Merge(t *testing.T) {
 	runBd(t, fx.sourceDir, "duplicates", "--auto-merge")
 	to := headCommit(t, fx.source)
 
+	// bd's auto-merge tie-break picks the lexicographically smallest
+	// hash-based ID as the surviving target (internal/idgen.GenerateHashID).
+	// d and e share identical title/description/creator, so their hash
+	// suffixes differ only by creation timestamp and are uncorrelated with
+	// creation order -- empirically confirmed via 10 trials of this exact
+	// fixture: 5 closed the first-created issue, 5 closed the second (see
+	// be-2cp1d bead notes). Discover which one actually closed instead of
+	// assuming e, or this assertion is flaky by construction.
+	closedID, survivorID := d, e
+	if bdShowField(t, fx.sourceDir, e, "status") == "closed" {
+		closedID, survivorID = e, d
+	}
+
 	// A merge commit spans two tables in one dolt_log commit (verified
 	// empirically: dolt_diff shows both `issues` and `dependencies` changed
 	// for the same commit_hash) -- Classify must not special-case "merge" as
 	// its own kind; it falls out of the same per-table rules as a plain
 	// close plus a plain dep_add, decomposed into two Actions.
-	actions, err := Classify(context.Background(), fx.source, from, to, e)
+	actions, err := Classify(context.Background(), fx.source, from, to, closedID)
 	if err != nil {
 		t.Fatalf("Classify: %v", err)
 	}
@@ -501,13 +514,13 @@ func TestClassifyAndExecute_Merge(t *testing.T) {
 		switch a.Kind {
 		case KindClose:
 			sawClose = true
-			if !containsAll(a.Argv, "close", e) {
-				t.Errorf("merge close argv = %v, want id %s", a.Argv, e)
+			if !containsAll(a.Argv, "close", closedID) {
+				t.Errorf("merge close argv = %v, want id %s", a.Argv, closedID)
 			}
 		case KindDepAdd:
 			sawDepAdd = true
-			if !containsAll(a.Argv, "dep", "add", e, d) {
-				t.Errorf("merge dep_add argv = %v, want edge %s -> %s", a.Argv, e, d)
+			if !containsAll(a.Argv, "dep", "add", closedID, survivorID) {
+				t.Errorf("merge dep_add argv = %v, want edge %s -> %s", a.Argv, closedID, survivorID)
 			}
 		}
 	}
@@ -516,11 +529,11 @@ func TestClassifyAndExecute_Merge(t *testing.T) {
 	}
 
 	applyActions(t, fx.workDir, actions)
-	if got := bdShowField(t, fx.workDir, e, "status"); got != "closed" {
-		t.Errorf("work clone status for %s = %q, want %q", e, got, "closed")
+	if got := bdShowField(t, fx.workDir, closedID, "status"); got != "closed" {
+		t.Errorf("work clone status for %s = %q, want %q", closedID, got, "closed")
 	}
-	if !depEdgeExists(t, fx.workDir, e, d) {
-		t.Fatalf("dependency %s -> %s does not exist in work clone after replaying merge", e, d)
+	if !depEdgeExists(t, fx.workDir, closedID, survivorID) {
+		t.Fatalf("dependency %s -> %s does not exist in work clone after replaying merge", closedID, survivorID)
 	}
 }
 
