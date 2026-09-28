@@ -105,8 +105,16 @@ func TestListCommits_DetectsMergeCommit(t *testing.T) {
 	runBd(t, dir, "create", "Base", "--type", "task", "--json")
 	runDolt(t, data, "checkout", "-b", "feature")
 	runBd(t, dir, "create", "Feature Work", "--type", "task", "--json")
-	runDolt(t, data, "checkout", "main")
-	runDolt(t, data, "merge", "feature", "-m", "merge feature into main")
+	// -f: a bd-embedded commit on a branch leaves dolt's CLI-level working-set
+	// check believing the OTHER branch has uncommitted changes too, even though
+	// status/diff are empty immediately after a forced checkout (confirmed
+	// empirically; see be-sodi8 notes). Not a driver-core concern: this runs
+	// entirely before ListCommits is ever called.
+	runDolt(t, data, "checkout", "-f", "main")
+	// --no-ff: main and feature never diverge in this sequence, so a plain
+	// merge silently fast-forwards (zero new commits) instead of producing the
+	// 2-parent commit this test's assertion requires.
+	runDolt(t, data, "merge", "--no-ff", "feature", "-m", "merge feature into main")
 
 	commits, err := ListCommits(context.Background(), data)
 	if err != nil {

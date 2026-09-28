@@ -41,12 +41,25 @@ func requireDolt(t *testing.T) {
 func runBd(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	requireBd(t)
-	cmd := exec.Command(realBd, args...)
+	return runBdBin(t, realBd, dir, args...)
+}
+
+// runBdBin is runBd for a caller-chosen bd binary rather than the ambient
+// realBd. Needed wherever a fixture must stay on the exact same schema/
+// behavior as another binary under test in the same test (e2e_test.go's
+// oracle side uses this to match integrationBin) -- realBd is whatever
+// happens to be on PATH in the current environment, which can be an older
+// build than the repo's current HEAD and silently lack columns HEAD already
+// has (be-sodi8 notes: current_revision, confirmed missing from a bd 1.1.0
+// row and present on a HEAD build's row for the same create).
+func runBdBin(t *testing.T, bin, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command(bin, args...)
 	cmd.Dir = dir
 	cmd.Env = sanitizedEnv(os.Environ())
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("bd %s (dir=%s) failed: %v\n%s", strings.Join(args, " "), dir, err, out)
+		t.Fatalf("%s %s (dir=%s) failed: %v\n%s", filepath.Base(bin), strings.Join(args, " "), dir, err, out)
 	}
 	return string(out)
 }

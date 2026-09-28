@@ -39,17 +39,34 @@ func TestDriverCore_AF1UC2FullLoop(t *testing.T) {
 	}
 
 	// ---- oracle: synthetic historical commits ------------------------------
-	oracleDir := initBdProject(t, "oracle")
+	// Built with integrationBin, not the ambient realBd: the oracle and work
+	// sides must be on the identical schema/behavior for a "faithful replay"
+	// to mean anything. realBd is whatever happens to be on PATH in the
+	// current environment and can be an older build than repoRoot's current
+	// HEAD, silently missing columns HEAD already has (be-sodi8 notes:
+	// current_revision, confirmed missing from a bd 1.1.0 row and present on
+	// a HEAD build's row for the same create) -- which would fail every
+	// replay step regardless of driver-core's own correctness.
+	oracleDir := initBdProjectWith(t, "oracle", integrationBin)
 	oracleData := dataDir(t, oracleDir)
 
-	outA := runBd(t, oracleDir, "create", "Widget A", "--type", "task", "--json")
+	outA := runBdBin(t, integrationBin, oracleDir, "create", "Widget A", "--type", "task", "--json")
 	idA := jsonID(t, outA)
-	outB := runBd(t, oracleDir, "create", "Widget B", "--type", "task", "--json")
+	outB := runBdBin(t, integrationBin, oracleDir, "create", "Widget B", "--type", "task", "--json")
 	idB := jsonID(t, outB)
-	runBd(t, oracleDir, "update", idA, "--description", "updated desc")
-	runBd(t, oracleDir, "dep", "add", idA, idB)
-	runBd(t, oracleDir, "close", idA, "--reason", "done")
-	runBd(t, oracleDir, "dep", "remove", idA, idB)
+	runBdBin(t, integrationBin, oracleDir, "update", idA, "--description", "updated desc")
+	runBdBin(t, integrationBin, oracleDir, "dep", "add", idA, idB)
+	// dep-remove before close: idA depends on idB (dep add is "issue
+	// depends-on"), so bd's own close command refuses to close a still-
+	// blocked issue ("cannot close blocked issue: ... is blocked by ...").
+	// The original create/update/dep_add/close/dep_remove order is
+	// unsatisfiable against real bd semantics regardless of driver-core's
+	// implementation; confirmed empirically via the full hard-gate run
+	// (be-sodi8 notes) -- removing the edge first still exercises the same
+	// four mutation kinds (create, update, dep_add, dep_remove) the test
+	// asserts on, just with a consistent narrative.
+	runBdBin(t, integrationBin, oracleDir, "dep", "remove", idA, idB)
+	runBdBin(t, integrationBin, oracleDir, "close", idA, "--reason", "done")
 
 	// ---- work: fresh project driven by the integration build --------------
 	workDir := initBdProjectWith(t, "work", integrationBin)
@@ -101,7 +118,16 @@ func TestDriverCore_AF1UC2FullLoop(t *testing.T) {
 	}
 
 	// ---- deliberately injected mismatch ------------------------------------
+	// A raw `dolt sql -q UPDATE` only auto-commits the SQL engine's own
+	// transaction into the working set; it does not create a new Dolt
+	// commit, so headCommit's dolt_log lookup below would still resolve to
+	// the pre-corruption commit and QueryAsOf would read the row as it stood
+	// before the UPDATE. Mirrors oraclequery_test.go's newQueryFixture
+	// (be-sodi8 notes): add+commit explicitly so the corruption is itself a
+	// queryable AS OF snapshot.
 	runDolt(t, workData, "sql", "-q", "UPDATE issues SET title='CORRUPTED' WHERE id='"+idB+"'")
+	runDolt(t, workData, "add", "-A")
+	runDolt(t, workData, "commit", "-m", "test: corrupt "+idB)
 	badRow, err := QueryOracleSubprocess(context.Background(), oracleQueryBin, workData, headCommit(t, workData), idB)
 	if err != nil {
 		t.Fatalf("querying corrupted row: %v", err)
