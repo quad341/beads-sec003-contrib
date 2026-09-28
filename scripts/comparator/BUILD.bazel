@@ -1,0 +1,21 @@
+load("@rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
+
+go_library(
+    name = "comparator_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/steveyegge/beads/scripts/comparator",
+    visibility = ["//visibility:private"],
+    deps = ["@com_github_gowebpki_jcs//:jcs"],
+)
+
+go_binary(
+    name = "comparator",
+    embed = [":comparator_lib"],
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "comparator_test",
+    srcs = ["comparator_test.go"],
+    embed = [":comparator_lib"],
+)
