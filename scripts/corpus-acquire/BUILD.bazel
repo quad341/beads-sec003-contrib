@@ -1,0 +1,20 @@
+load("@rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
+
+go_library(
+    name = "corpus-acquire_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/steveyegge/beads/scripts/corpus-acquire",
+    visibility = ["//visibility:private"],
+)
+
+go_binary(
+    name = "corpus-acquire",
+    embed = [":corpus-acquire_lib"],
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "corpus-acquire_test",
+    srcs = ["corpusacquire_test.go"],
+    embed = [":corpus-acquire_lib"],
+)

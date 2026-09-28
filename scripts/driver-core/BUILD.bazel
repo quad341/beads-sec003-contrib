@@ -38,6 +38,7 @@ go_test(
         "env_test.go",
         "fixture_test.go",
         "integration_test.go",
+        "lostupdate_race_test.go",
         "mutationkind_test.go",
         "refname_test.go",
         "replay_test.go",
@@ -45,4 +46,8 @@ go_test(
         "store_test.go",
     ],
     embed = [":driver-core_lib"],
+    deps = [
+        "//internal/storage/embeddeddolt",
+        "//internal/types",
+    ],
 )
