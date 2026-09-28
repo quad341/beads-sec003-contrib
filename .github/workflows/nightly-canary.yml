@@ -1,0 +1,55 @@
+name: Nightly Canary
+
+on:
+  schedule:
+    # 3am UTC daily, after the 2am full test suite (nightly.yml).
+    - cron: '0 3 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  canary:
+    name: Nightly canary (UC4/AF2)
+    # corpus-acquire (be-hs42e.5.1) reads the production corpus at the
+    # filesystem level from CANARY_CORPUS_DATA_DIR, which only a runner with
+    # access to the shared Dolt server's data_dir can provide (e.g. a
+    # self-hosted runner co-located with that server). No such runner label
+    # exists in this repo yet; ubuntu-latest is a placeholder until an
+    # operator provisions one, and canary-core.sh fails fast with a clear
+    # error while CANARY_CORPUS_DATA_DIR is unset rather than pretending to
+    # run.
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout harness tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+
+      - name: Checkout integration branch under test
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          repository: versioned-beads/beads
+          ref: integration
+          path: integration-checkout
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Install Dolt
+        run: ./scripts/ci/install-dolt.sh
+
+      - name: Configure Git and Dolt identity
+        run: |
+          git config --global user.name "CI Bot"
+          git config --global user.email "ci@beads.test"
+          dolt config --global --add user.name "CI Bot"
+          dolt config --global --add user.email "ci@beads.test"
+
+      - name: Run nightly canary
+        env:
+          CANARY_INTEGRATION_REPO: ${{ github.workspace }}/integration-checkout
+          # Operator follow-up: requires a runner with filesystem access to
+          # the shared Dolt server's data_dir (see the runs-on note above).
+          CANARY_CORPUS_DATA_DIR: ${{ vars.CANARY_CORPUS_DATA_DIR }}
+        run: |
+          scripts/ci/canary-core.sh
