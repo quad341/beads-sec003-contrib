@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"encoding/csv"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,22 +14,58 @@ import (
 // realBd and realDolt are resolved once per test binary run, mirroring
 // mutation-translator's (be-2cp1d) own fixture convention, so every helper
 // below uses the same absolute path regardless of PATH mutations elsewhere
-// in a test run.
+// in a test run. headBd is also built once per run, for fixtures that need a
+// schema/behavior-matched bd rather than whatever realBd happens to be --
+// see buildHeadBd.
 var (
 	realBd   string
 	realDolt string
+	headBd   string
 )
 
 func TestMain(m *testing.M) {
 	realBd, _ = exec.LookPath("bd")
 	realDolt, _ = exec.LookPath("dolt")
-	os.Exit(m.Run())
+	headBd = buildHeadBd()
+	code := m.Run()
+	if headBd != "" {
+		_ = os.Remove(headBd)
+	}
+	os.Exit(code)
+}
+
+// buildHeadBd builds ./cmd/bd from this checkout's current HEAD into a temp
+// binary. realBd is whatever happens to be on PATH in the current
+// environment, which can be an older build than the repo's current HEAD and
+// silently lack tables/columns HEAD already has (runBdBin's doc comment;
+// be-hs42e.5.3 hit this directly -- a fixture initialized via realBd had no
+// issue_versions table at all, migration 0067 postdating that build).
+// Returns "" on failure rather than aborting the whole test binary; callers
+// skip via requireHeadBd.
+func buildHeadBd() string {
+	out, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
+	if err != nil {
+		return ""
+	}
+	repoRoot := strings.TrimSpace(string(out))
+	bin := filepath.Join(os.TempDir(), fmt.Sprintf("driver-core-head-bd-%d", os.Getpid()))
+	if err := goBuild(context.Background(), repoRoot, "./cmd/bd", bin); err != nil {
+		return ""
+	}
+	return bin
 }
 
 func requireBd(t *testing.T) {
 	t.Helper()
 	if realBd == "" {
 		t.Skip("bd not installed, skipping driver-core fixture test")
+	}
+}
+
+func requireHeadBd(t *testing.T) {
+	t.Helper()
+	if headBd == "" {
+		t.Skip("could not build HEAD bd, skipping driver-core fixture test that needs current-schema bd")
 	}
 }
 
