@@ -1,0 +1,21 @@
+load("@rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
+
+go_library(
+    name = "mutation-translator_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/steveyegge/beads/scripts/mutation-translator",
+    visibility = ["//visibility:private"],
+    deps = ["//internal/storage/issueops"],
+)
+
+go_binary(
+    name = "mutation-translator",
+    embed = [":mutation-translator_lib"],
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "mutation-translator_test",
+    srcs = ["main_test.go"],
+    embed = [":mutation-translator_lib"],
+)

@@ -12,6 +12,7 @@ go_library(
     deps = [
         "//internal/configfile",
         "//internal/git",
+        "//internal/gitenv",
         "//internal/storage",
         "//internal/storage/backends",
         "//internal/utils",
@@ -37,6 +38,7 @@ go_test(
         "//internal/configfile",
         "//internal/doltserver",
         "//internal/git",
+        "//internal/gitenv",
         "//internal/testutil",
         "//internal/utils",
     ],

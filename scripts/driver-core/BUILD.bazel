@@ -1,0 +1,48 @@
+load("@rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
+
+go_library(
+    name = "driver-core_lib",
+    srcs = [
+        "compare.go",
+        "discover.go",
+        "env.go",
+        "integration.go",
+        "main.go",
+        "mutationkind.go",
+        "refname.go",
+        "replay.go",
+        "run.go",
+        "store.go",
+        "types.go",
+    ],
+    importpath = "github.com/steveyegge/beads/scripts/driver-core",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//internal/storage/issueops",
+        "@com_github_gowebpki_jcs//:jcs",
+    ],
+)
+
+go_binary(
+    name = "driver-core",
+    embed = [":driver-core_lib"],
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "driver-core_test",
+    srcs = [
+        "compare_test.go",
+        "discover_test.go",
+        "e2e_test.go",
+        "env_test.go",
+        "fixture_test.go",
+        "integration_test.go",
+        "mutationkind_test.go",
+        "refname_test.go",
+        "replay_test.go",
+        "run_test.go",
+        "store_test.go",
+    ],
+    embed = [":driver-core_lib"],
+)
