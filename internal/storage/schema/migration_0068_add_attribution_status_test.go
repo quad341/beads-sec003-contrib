@@ -9,13 +9,17 @@ import (
 )
 
 // Phase 2 of the versioned-beads epic (be-hs42e / gastownhall/beads#6132,
-// this slice: be-hs42e.3 / #6135) adds one column: issue_versions gains a
+// this slice: be-hs42e.3 / #6135) adds three columns: issue_versions gains a
 // NOT NULL attribution_status (design §16.4, R14), written by
 // RecordVersionInTx / attributionStatusForActor
 // (internal/storage/issueops/version_history.go) from the same build that
 // ships this migration, so the NOT NULL constraint never rejects a
-// pre-existing row. Steps 1-5 of design §16.3 (the version_id PK swap and
-// participation_generation) are a different bead's scope and are not in this
+// pre-existing row; and issues/wisps each gain a nullable
+// participation_generation (design §16.3 steps 4-5, be-dt74u amendment,
+// be-h89oq) -- the write-fence column RecordVersionInTx reads to decide
+// whether an update-shaped mutation against a legacy (NULL) record mints a
+// version row at all (design §16.2b). Steps 1-3 of design §16.3 (the
+// version_id PK swap) are a different bead's scope and are not in this
 // migration file.
 //
 // Step 7 (added at review, donnabox on #6358 item 4) retypes
@@ -77,8 +81,13 @@ func TestMigration0068AddsAttributionStatus(t *testing.T) {
 			t.Errorf("0068's CLI bundle substitute missing direct DDL %q", want)
 		}
 	}
-	if cliSubstituteAssumesWispTables(migration0068Up) {
-		t.Error("0068's CLI substitute touches only issue_versions, which has no wisps-side counterpart table — it must not be listed in cliSubstituteAssumesWispTables")
+	// Design §16.3 step 5 (be-dt74u amendment, be-h89oq) makes 0068's CLI
+	// substitute ALTER wisps directly for participation_generation too, the
+	// same unconditional-wisps-ALTER shape 0067's current_revision override
+	// already uses (see cliSubstituteAssumesWispTables' 0067 case) -- so this
+	// migration now belongs on the list it was deliberately absent from above.
+	if !cliSubstituteAssumesWispTables(migration0068Up) {
+		t.Error("0068's CLI substitute now ALTERs wisps directly for participation_generation (design §16.3 step 5), the same way 0067's does for current_revision — it must be listed in cliSubstituteAssumesWispTables")
 	}
 
 	// down.sql files are not part of the embedded FS (only migrations/*.up.sql
@@ -152,5 +161,89 @@ func TestMigration0068AddsAttributionStatusThroughDoltCLI(t *testing.T) {
 	rows = queryDoltCSV(t, dir, `SELECT durable_state FROM issue_versions WHERE issue_id = 'iv-2'`)
 	if len(rows) != 1 || rows[0]["durable_state"] != verbatim {
 		t.Fatalf("durable_state round-trip changed the bytes post-migration: got %v, want %q", rows, verbatim)
+	}
+}
+
+// TestMigration0068AddsParticipationGenerationColumns is a pure-Go,
+// DB-independent check of design §16.3 steps 4-5 (be-dt74u amendment,
+// be-h89oq): issues and wisps each gain a nullable participation_generation
+// (design §16.2a). NULL means legacy-unmigrated; any non-NULL is a positive
+// declaration — RecordVersionInTx's write fence (design §16.2b) reads this
+// column to decide whether an update-shaped mutation against a legacy record
+// mints a version row at all. No backfill: NULL is the correct default for
+// every existing row, on both planes.
+//
+// wisps.participation_generation is guarded on the wisps table existing as
+// well as the column, mirroring 0067's wisps.current_revision guard exactly
+// (see that migration's header): wisps is dolt-ignored/clone-local, so a
+// clone that never synced the local wisp tables must no-op rather than abort.
+func TestMigration0068AddsParticipationGenerationColumns(t *testing.T) {
+	upSQL, err := MigrationSQL(migration0068Up)
+	if err != nil {
+		t.Fatalf("MigrationSQL(%s) error = %v, want the migration file to exist", migration0068Up, err)
+	}
+	for _, want := range []string{
+		"ALTER TABLE issues ADD COLUMN participation_generation BIGINT NULL",
+		"@issues_pg_needs_add",
+		"ALTER TABLE wisps ADD COLUMN participation_generation BIGINT NULL",
+		"@wisps_pg_needs_add",
+	} {
+		if !strings.Contains(upSQL, want) {
+			t.Errorf("0068 up migration missing %q (design §16.3 steps 4-5)\nfull SQL:\n%s", want, upSQL)
+		}
+	}
+	if n := strings.Count(upSQL, "COLUMN_NAME = 'participation_generation'"); n != 2 {
+		t.Errorf("0068 up migration has %d INFORMATION_SCHEMA probes for participation_generation, want 2 (one for issues, one for wisps)\nfull SQL:\n%s", n, upSQL)
+	}
+	// The bundle override is what keeps the two PREPARE blocks above off the
+	// pre-2.3 CLI path, exactly as it already does for steps 6-7.
+	for _, want := range []string{
+		"ALTER TABLE issues ADD COLUMN participation_generation BIGINT NULL;",
+		"ALTER TABLE wisps ADD COLUMN participation_generation BIGINT NULL;",
+	} {
+		if !strings.Contains(cliCompatibleMigrationSQL(migration0068Up, upSQL), want) {
+			t.Errorf("0068's CLI bundle substitute missing direct DDL %q", want)
+		}
+	}
+
+	downBytes, err := os.ReadFile("migrations/" + migration0068Down)
+	if err != nil {
+		t.Fatalf("read %s: %v, want the migration file to exist", migration0068Down, err)
+	}
+	downSQL := string(downBytes)
+	for _, want := range []string{
+		"ALTER TABLE issues DROP COLUMN participation_generation",
+		"ALTER TABLE wisps DROP COLUMN participation_generation",
+	} {
+		if !strings.Contains(downSQL, want) {
+			t.Errorf("0068 down migration missing %q\nfull SQL:\n%s", want, downSQL)
+		}
+	}
+}
+
+// TestMigration0068AddsParticipationGenerationColumnsThroughDoltCLI applies
+// the full migration bundle through a real `dolt` binary (skipped without
+// one — see testutil.RequireDoltBinary) and checks the shape acceptance
+// criteria a pure-Go SQL-text check cannot: actual column type/nullability as
+// Dolt reports it, on both planes.
+func TestMigration0068AddsParticipationGenerationColumnsThroughDoltCLI(t *testing.T) {
+	testutil.RequireDoltBinary(t)
+
+	dir := t.TempDir()
+	runDoltCommand(t, dir, "init", "--name", "test", "--email", "test@example.com")
+	runDoltSQL(t, dir, AllMigrationsSQL())
+
+	requireDoltDataType(t, dir, "issues", "participation_generation", "bigint", "YES")
+	requireDoltDataType(t, dir, "wisps", "participation_generation", "bigint", "YES")
+
+	// No backfill: design §16.2a's "NULL = legacy-unmigrated" declaration
+	// needs every pre-existing (and freshly-inserted, pre-fence) row to read
+	// back NULL. Only issues is round-tripped here — the column is read and
+	// written on that plane; wisps carries it for schema-parity shape only
+	// (§16.2a) and is never read or written by this phase.
+	runDoltSQL(t, dir, `INSERT INTO issues (id, title, description, design, acceptance_criteria, notes) VALUES ('pg-1', 't', 'd', 'des', 'ac', 'n')`)
+	rows := queryDoltCSV(t, dir, `SELECT participation_generation FROM issues WHERE id = 'pg-1'`)
+	if len(rows) != 1 || rows[0]["participation_generation"] != "" {
+		t.Fatalf("participation_generation for a freshly-inserted issues row = %v, want NULL (empty string in CSV form)", rows)
 	}
 }
