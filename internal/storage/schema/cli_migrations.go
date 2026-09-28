@@ -193,6 +193,12 @@ func cliSubstituteAssumesWispTables(name string) bool {
 		// cliMigration0067AddVersionedBeadsSchema drops the source's
 		// @wisps_cr_needs_add table-exists guard and ALTERs wisps directly.
 		return true
+	case "0068_add_attribution_status.up.sql":
+		// cliMigration0068AddAttributionStatus drops the source's
+		// @wisps_pg_needs_add table-exists guard and ALTERs wisps directly
+		// for participation_generation (design §16.3 step 5, be-h89oq), the
+		// same shape 0067's override already uses for current_revision.
+		return true
 	default:
 		return false
 	}
@@ -268,17 +274,24 @@ CREATE TABLE IF NOT EXISTS store_epoch (
 ALTER TABLE issues ADD COLUMN current_revision BIGINT NOT NULL DEFAULT 1;
 ALTER TABLE wisps ADD COLUMN current_revision BIGINT NOT NULL DEFAULT 1;`
 
-// cliMigration0068AddAttributionStatus is 0068 with its two guarded PREPARE
+// cliMigration0068AddAttributionStatus is 0068 with its four guarded PREPARE
 // blocks replaced by the direct ALTERs they would run on a fresh database:
-// step 6's ADD COLUMN attribution_status, and step 7's MODIFY COLUMN
+// step 6's ADD COLUMN attribution_status, step 7's MODIFY COLUMN
 // durable_state LONGBLOB (the byte-preserving type the review on
 // gastownhall/beads#6358 item 4 asked for -- see the migration's step 7
-// header). issue_versions is created earlier in the same series by 0067,
-// which still creates durable_state as JSON and whose override is left
-// untouched: 0068 is what retypes it. So the column always needs adding and
-// the retype always fires here; no wisps twin exists for this table.
+// header), and steps 4-5's ADD COLUMN participation_generation on issues and
+// wisps (be-dt74u amendment, be-h89oq). issue_versions is created earlier in
+// the same series by 0067, which still creates durable_state as JSON and
+// whose override is left untouched: 0068 is what retypes it. issues and
+// wisps both exist by this point in the series (0067 creates the versioned
+// columns on both) and neither carries participation_generation yet, so all
+// four ALTERs always fire on a fresh bundle -- this substitute now ALTERs
+// wisps directly, the same as 0067's, so it belongs on
+// cliSubstituteAssumesWispTables too.
 const cliMigration0068AddAttributionStatus = `ALTER TABLE issue_versions ADD COLUMN attribution_status VARCHAR(20) NOT NULL;
-ALTER TABLE issue_versions MODIFY COLUMN durable_state LONGBLOB;`
+ALTER TABLE issue_versions MODIFY COLUMN durable_state LONGBLOB;
+ALTER TABLE issues ADD COLUMN participation_generation BIGINT NULL;
+ALTER TABLE wisps ADD COLUMN participation_generation BIGINT NULL;`
 
 // cliMigration0069WidenIssueVersionsDatetimePrecision is 0069 with its two
 // guarded PREPARE blocks replaced by the direct MODIFYs they would run on a

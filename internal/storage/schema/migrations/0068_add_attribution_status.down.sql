@@ -1,7 +1,7 @@
--- Reverse of 0068 steps 6 and 7 only (attribution_status, and the
--- durable_state LONGBLOB retype), undone in reverse order. Steps 1-5 of
--- section 16.3 do not exist in this migration (see 0068's up file), so
--- there is nothing else to reverse here.
+-- Reverse of 0068 steps 4-7 (participation_generation on issues/wisps,
+-- attribution_status, and the durable_state LONGBLOB retype), undone in
+-- reverse order. Steps 1-3 of section 16.3 do not exist in this migration
+-- (see 0068's up file), so there is nothing else to reverse here.
 --
 -- issue_versions is guaranteed empty in any real rollback scenario for the
 -- same reason the up migration's NOT NULL-no-default is safe (Phase 2 is
@@ -40,5 +40,30 @@ SET @issue_versions_as_has = (
 );
 SET @sql = IF(@issue_versions_as_has > 0,
     'ALTER TABLE issue_versions DROP COLUMN attribution_status',
+    'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- Steps 4-5 reverse (be-h89oq): drop participation_generation from both
+-- planes. Guarded on COUNT the same way the up migration's ADD is, so a
+-- partially-applied or already-rolled-back workspace rolls back safely.
+SET @issues_pg_has = (
+    SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'issues'
+      AND COLUMN_NAME = 'participation_generation'
+);
+SET @sql = IF(@issues_pg_has > 0,
+    'ALTER TABLE issues DROP COLUMN participation_generation',
+    'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @wisps_pg_has = (
+    SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'wisps'
+      AND COLUMN_NAME = 'participation_generation'
+);
+SET @sql = IF(@wisps_pg_has > 0,
+    'ALTER TABLE wisps DROP COLUMN participation_generation',
     'SELECT 1');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;

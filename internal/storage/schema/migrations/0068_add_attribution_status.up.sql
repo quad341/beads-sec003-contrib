@@ -2,14 +2,15 @@
 -- / gastownhall/beads#6135), step 6 of design section 16.3 (be-dt74u
 -- amendment, be-hs42e.3's design field), plus step 7 -- the durable_state
 -- LONGBLOB retype added at review, which has its own header further down.
+-- Steps 4-5 (participation_generation BIGINT NULL on issues and its wisps
+-- shape-parity mirror) were appended later by be-h89oq -- see that section's
+-- own header below for the write-fence this column feeds.
 --
--- Steps 1-5 of section 16.3 (version_id CHAR(36) UUID PK swap;
--- participation_generation BIGINT NULL on issues and its wisps shape-parity
--- mirror) are deliberately NOT in this file: be-v33pa's own scope is BASE
--- re-seating + attribution_status (section 16.4) only, per its exit
--- contract. A later bead may append the remaining steps to this same file --
--- scripts/check-migration-hygiene.sh Check C only protects a migration
--- already shipped on the base branch, and this one is still unmerged.
+-- Steps 1-3 of section 16.3 (version_id CHAR(36) UUID PK swap) are
+-- deliberately NOT in this file: they are a different bead's scope. A later
+-- bead may append them to this same file -- scripts/check-migration-hygiene.sh
+-- Check C only protects a migration already shipped on the base branch, and
+-- this one is still unmerged.
 --
 -- attribution_status (section 16.4, vocabulary aligned to BDP's
 -- carried-attribution status, gastownhall/bdp#18, merged 2026-09-07): exactly
@@ -102,5 +103,46 @@ SET @issue_versions_ds_needs_retype = (
 );
 SET @sql = IF(@issue_versions_ds_needs_retype = 1,
     'ALTER TABLE issue_versions MODIFY COLUMN durable_state LONGBLOB',
+    'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- Steps 4-5 of section 16.3 (be-dt74u amendment, be-h89oq): participation_generation
+-- BIGINT NULL on issues, mirrored inertly on wisps. NULL means
+-- legacy-unmigrated; any non-NULL is a positive declaration sourced from
+-- store_epoch.epoch. RecordVersionInTx's write fence (design §16.2b, in
+-- internal/storage/issueops/version_history.go) reads this column to decide
+-- whether an update-shaped mutation against a legacy record mints a version
+-- row at all -- a create-shaped mutation stamps a fresh value instead. No
+-- backfill: NULL is the correct default for every existing row, on both
+-- planes, so a plain ADD COLUMN with no DEFAULT is exactly what's wanted.
+SET @issues_pg_needs_add = (
+    SELECT IF(COUNT(*) = 0, 1, 0)
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'issues'
+      AND COLUMN_NAME = 'participation_generation'
+);
+SET @sql = IF(@issues_pg_needs_add = 1,
+    'ALTER TABLE issues ADD COLUMN participation_generation BIGINT NULL',
+    'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- wisps.participation_generation -- shape parity only, never read or written
+-- on this plane (design §16.2a). Guarded on the wisps table existing as well
+-- as the column, mirroring 0067's wisps.current_revision guard exactly (see
+-- that migration's header): wisps is dolt-ignored/clone-local, so a clone
+-- that never synced the local wisp tables must no-op rather than abort.
+SET @wisps_pg_needs_add = IF(
+    (SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'wisps') > 0
+    AND
+    (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'wisps'
+          AND COLUMN_NAME = 'participation_generation') = 0,
+    1, 0
+);
+SET @sql = IF(@wisps_pg_needs_add = 1,
+    'ALTER TABLE wisps ADD COLUMN participation_generation BIGINT NULL',
     'SELECT 1');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;

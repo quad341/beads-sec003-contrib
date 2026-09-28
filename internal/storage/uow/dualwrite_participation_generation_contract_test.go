@@ -2,7 +2,6 @@ package uow
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 
 	"github.com/steveyegge/beads/backend/conformance"
@@ -120,15 +119,23 @@ func newUOWParticipationGenerationFixture(t *testing.T, ctx context.Context, pre
 			return count, err
 		},
 		ParticipationGeneration: func(ctx context.Context, id string) (*int64, error) {
-			var gen sql.NullInt64
+			// scanRawSQLValue refuses a NULL numeric destination outright
+			// (issue_operations_contract_test.go's frozen scaffolding surface,
+			// bd-kue5t) rather than decaying it to zero, so a bare
+			// participation_generation read cannot scan into *sql.NullInt64 the
+			// way the dolt/embeddeddolt legs' std-library Scan does. epoch is
+			// seeded at 1 and only ever increments (version_history.go), so a
+			// stamped participation_generation is always >= 1 and -1 is an
+			// unambiguous "still NULL" sentinel for the COALESCE.
+			var gen int64
 			if err := kit.QueryScalar(ctx,
-				"SELECT participation_generation FROM issues WHERE id = ?", []any{id}, &gen); err != nil {
+				"SELECT COALESCE(participation_generation, -1) FROM issues WHERE id = ?", []any{id}, &gen); err != nil {
 				return nil, err
 			}
-			if !gen.Valid {
+			if gen == -1 {
 				return nil, nil
 			}
-			return &gen.Int64, nil
+			return &gen, nil
 		},
 	}
 }

@@ -242,7 +242,13 @@ func TestMigration0068AddsParticipationGenerationColumnsThroughDoltCLI(t *testin
 	// written on that plane; wisps carries it for schema-parity shape only
 	// (§16.2a) and is never read or written by this phase.
 	runDoltSQL(t, dir, `INSERT INTO issues (id, title, description, design, acceptance_criteria, notes) VALUES ('pg-1', 't', 'd', 'des', 'ac', 'n')`)
-	rows := queryDoltCSV(t, dir, `SELECT participation_generation FROM issues WHERE id = 'pg-1'`)
+	// id rides along with the target column: dolt sql -r csv emits no data
+	// line at all for a single-column result whose only value is NULL (just
+	// the header survives) -- reproduced identically against pre-existing
+	// unrelated nullable columns (assignee, closed_at), so it's a CSV-writer
+	// quirk, not something specific to this migration. A second,
+	// always-populated column keeps the row real.
+	rows := queryDoltCSV(t, dir, `SELECT id, participation_generation FROM issues WHERE id = 'pg-1'`)
 	if len(rows) != 1 || rows[0]["participation_generation"] != "" {
 		t.Fatalf("participation_generation for a freshly-inserted issues row = %v, want NULL (empty string in CSV form)", rows)
 	}
