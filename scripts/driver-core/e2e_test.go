@@ -191,6 +191,39 @@ func TestDriverCore_AF1UC2FullLoop(t *testing.T) {
 	if !sawStorage || !sawLatency {
 		t.Errorf("expected both storage_bytes and write_latency_ms metric samples, got sawStorage=%v sawLatency=%v", sawStorage, sawLatency)
 	}
+
+	// be-hs42e.5.3: storage-growth and write-latency-tail metrics must come
+	// from this real replay run (exit_contract: "not synthesized
+	// separately"), so this checks the same metrics-samples output the
+	// assertions above already read, not a second standalone call.
+	sawIssueVersionsBytes, sawRetainedPayloadBytes, sawTombstoneCount := false, false, false
+	sawP50, sawP95, sawP99 := false, false, false
+	for _, m := range metrics {
+		if m.RunID != run.ID {
+			continue
+		}
+		switch m.Name {
+		case "issue_versions_bytes":
+			sawIssueVersionsBytes = true
+		case "retained_payload_bytes":
+			sawRetainedPayloadBytes = true
+		case "tombstone_count":
+			sawTombstoneCount = true
+		case "write_latency_p50_ms":
+			sawP50 = true
+		case "write_latency_p95_ms":
+			sawP95 = true
+		case "write_latency_p99_ms":
+			sawP99 = true
+		}
+	}
+	if !sawIssueVersionsBytes || !sawRetainedPayloadBytes || !sawTombstoneCount {
+		t.Errorf("expected issue_versions_bytes, retained_payload_bytes and tombstone_count metric samples, got versions=%v retained=%v tombstones=%v",
+			sawIssueVersionsBytes, sawRetainedPayloadBytes, sawTombstoneCount)
+	}
+	if !sawP50 || !sawP95 || !sawP99 {
+		t.Errorf("expected write_latency_p50_ms/p95_ms/p99_ms metric samples, got p50=%v p95=%v p99=%v", sawP50, sawP95, sawP99)
+	}
 }
 
 func findRepoRoot(t *testing.T) string {
