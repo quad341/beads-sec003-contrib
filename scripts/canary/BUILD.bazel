@@ -1,0 +1,29 @@
+load("@rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
+
+go_library(
+    name = "canary_lib",
+    srcs = [
+        "decision.go",
+        "main.go",
+        "mismatch.go",
+        "schedule.go",
+    ],
+    importpath = "github.com/steveyegge/beads/scripts/canary",
+    visibility = ["//visibility:private"],
+)
+
+go_binary(
+    name = "canary",
+    embed = [":canary_lib"],
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "canary_test",
+    srcs = [
+        "decision_test.go",
+        "mismatch_test.go",
+        "schedule_test.go",
+    ],
+    embed = [":canary_lib"],
+)

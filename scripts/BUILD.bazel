@@ -12,6 +12,7 @@ go_test(
         "complexity_script_test.go",
         "conformance_script_test.go",
         "install_dolt_test.go",
+        "nightly_canary_workflow_test.go",
         "pull_dolt_image_test.go",
         "release_script_test.go",
         "test_script_test.go",
