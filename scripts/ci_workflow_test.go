@@ -1156,7 +1156,16 @@ func assertPinnedGoCacheActions(t *testing.T, workflowName string, workflow ciWo
 }
 
 type ciWorkflow struct {
+	On   ciWorkflowTriggers       `yaml:"on"`
 	Jobs map[string]ciWorkflowJob `yaml:"jobs"`
+}
+
+type ciWorkflowTriggers struct {
+	Schedule []ciWorkflowSchedule `yaml:"schedule"`
+}
+
+type ciWorkflowSchedule struct {
+	Cron string `yaml:"cron"`
 }
 
 type ciWorkflowJob struct {
