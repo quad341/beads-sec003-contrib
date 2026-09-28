@@ -72,13 +72,22 @@ func Run(ctx context.Context, cfg RunConfig) (ReplayRun, error) {
 		return run, fmt.Errorf("run: %w", err)
 	}
 
-	if err := runReplayLoop(ctx, cfg, run, store); err != nil {
-		run.Status = "failed"
-		run.FinishedAt = time.Now().UTC()
-		if writeErr := store.WriteReplayRun(run); writeErr != nil {
-			return run, fmt.Errorf("run: %w (and failed to record failed status: %v)", err, writeErr)
+	if err := captureAndWriteGrowthMetrics(ctx, store, cfg.WorkDataDir, run.ID, "baseline"); err != nil {
+		return failRun(store, run, fmt.Errorf("run: baseline growth metrics: %w", err))
+	}
+
+	latencies, err := runReplayLoop(ctx, cfg, run, store)
+	if err != nil {
+		return failRun(store, run, err)
+	}
+
+	if err := captureAndWriteGrowthMetrics(ctx, store, cfg.WorkDataDir, run.ID, "final"); err != nil {
+		return failRun(store, run, fmt.Errorf("run: final growth metrics: %w", err))
+	}
+	for _, sample := range AggregateWriteLatency(run.ID, latencies, time.Now().UTC()) {
+		if err := store.WriteMetricSample(sample); err != nil {
+			return failRun(store, run, fmt.Errorf("run: write latency aggregate %s: %w", sample.Name, err))
 		}
-		return run, fmt.Errorf("run: %w", err)
 	}
 
 	run.Status = "completed"
@@ -89,31 +98,66 @@ func Run(ctx context.Context, cfg RunConfig) (ReplayRun, error) {
 	return run, nil
 }
 
-func runReplayLoop(ctx context.Context, cfg RunConfig, run ReplayRun, store *Store) error {
-	commits, err := ListCommits(ctx, cfg.OracleDataDir)
+// failRun marks run failed, persists it, and folds cause and any persistence
+// error into a single returned error -- the same "mark failed, save, report"
+// sequence every Run exit point past store creation needs.
+func failRun(store *Store, run ReplayRun, cause error) (ReplayRun, error) {
+	run.Status = "failed"
+	run.FinishedAt = time.Now().UTC()
+	if writeErr := store.WriteReplayRun(run); writeErr != nil {
+		return run, fmt.Errorf("run: %w (and failed to record failed status: %v)", cause, writeErr)
+	}
+	return run, fmt.Errorf("run: %w", cause)
+}
+
+// captureAndWriteGrowthMetrics captures the three storage-growth samples
+// (be-hs42e.5.3) for dataDir and persists each one, tagged runID/phase.
+func captureAndWriteGrowthMetrics(ctx context.Context, store *Store, dataDir, runID, phase string) error {
+	samples, err := CaptureGrowthMetrics(ctx, dataDir, runID, phase, time.Now().UTC())
 	if err != nil {
 		return err
 	}
-	commits = selectSample(commits, cfg.SampleSize)
-
-	for i := 0; i+1 < len(commits); i++ {
-		from, to := commits[i], commits[i+1]
-		touched, err := DiscoverTouchedIssues(ctx, cfg.OracleDataDir, from.Hash, to.Hash)
-		if err != nil {
+	for _, s := range samples {
+		if err := store.WriteMetricSample(s); err != nil {
 			return err
-		}
-		for _, ti := range touched {
-			if err := replayOne(ctx, cfg, run.ID, store, from.Hash, to.Hash, ti, to.IsMerge); err != nil {
-				return err
-			}
 		}
 	}
 	return nil
 }
 
+// runReplayLoop replays every touched issue across every commit pair in the
+// oracle's history (or an evenly-spaced sample of it), returning each
+// replayed issue's write-latency sample so the caller can aggregate
+// percentiles over the whole run once it finishes.
+func runReplayLoop(ctx context.Context, cfg RunConfig, run ReplayRun, store *Store) ([]MetricSample, error) {
+	commits, err := ListCommits(ctx, cfg.OracleDataDir)
+	if err != nil {
+		return nil, err
+	}
+	commits = selectSample(commits, cfg.SampleSize)
+
+	var latencies []MetricSample
+	for i := 0; i+1 < len(commits); i++ {
+		from, to := commits[i], commits[i+1]
+		touched, err := DiscoverTouchedIssues(ctx, cfg.OracleDataDir, from.Hash, to.Hash)
+		if err != nil {
+			return nil, err
+		}
+		for _, ti := range touched {
+			sample, err := replayOne(ctx, cfg, run.ID, store, from.Hash, to.Hash, ti, to.IsMerge)
+			if err != nil {
+				return nil, err
+			}
+			latencies = append(latencies, sample)
+		}
+	}
+	return latencies, nil
+}
+
 // replayOne replays a single touched issue's mutation for one commit pair,
-// records the comparison outcome, and emits its storage/latency samples.
-func replayOne(ctx context.Context, cfg RunConfig, runID string, store *Store, from, to string, ti TouchedIssue, isMerge bool) error {
+// records the comparison outcome, emits its storage/latency samples, and
+// returns the write-latency sample for the caller's run-wide aggregation.
+func replayOne(ctx context.Context, cfg RunConfig, runID string, store *Store, from, to string, ti TouchedIssue, isMerge bool) (MetricSample, error) {
 	mutationKind := MutationKindFor(ti.Diff, isMerge)
 
 	var writeLatency time.Duration
@@ -136,7 +180,7 @@ func replayOne(ctx context.Context, cfg RunConfig, runID string, store *Store, f
 
 	result, err := ReplayAndCompare(ctx, readOracle, replay)
 	if err != nil {
-		return fmt.Errorf("replay %s at %s: %w", ti.IssueID, to, err)
+		return MetricSample{}, fmt.Errorf("replay %s at %s: %w", ti.IssueID, to, err)
 	}
 
 	if err := store.WriteCommitReplayResult(CommitReplayResult{
@@ -148,7 +192,7 @@ func replayOne(ctx context.Context, cfg RunConfig, runID string, store *Store, f
 		OracleHash:    result.OracleHash,
 		CandidateHash: result.CandidateHash,
 	}); err != nil {
-		return fmt.Errorf("write commit replay result for %s at %s: %w", ti.IssueID, to, err)
+		return MetricSample{}, fmt.Errorf("write commit replay result for %s at %s: %w", ti.IssueID, to, err)
 	}
 
 	if !result.Matched && result.Mismatch != nil {
@@ -160,26 +204,27 @@ func replayOne(ctx context.Context, cfg RunConfig, runID string, store *Store, f
 			ExpectedJSON: result.Mismatch.ExpectedJSON,
 			ActualJSON:   result.Mismatch.ActualJSON,
 		}); err != nil {
-			return fmt.Errorf("write mismatch for %s at %s: %w", ti.IssueID, to, err)
+			return MetricSample{}, fmt.Errorf("write mismatch for %s at %s: %w", ti.IssueID, to, err)
 		}
 	}
 
-	if err := store.WriteMetricSample(MetricSample{
+	latencySample := MetricSample{
 		RunID: runID, Name: "write_latency_ms", Value: float64(writeLatency.Milliseconds()), SampledAt: time.Now().UTC(),
-	}); err != nil {
-		return fmt.Errorf("write latency metric for %s at %s: %w", ti.IssueID, to, err)
+	}
+	if err := store.WriteMetricSample(latencySample); err != nil {
+		return MetricSample{}, fmt.Errorf("write latency metric for %s at %s: %w", ti.IssueID, to, err)
 	}
 	size, err := dirSize(cfg.WorkDataDir)
 	if err != nil {
-		return fmt.Errorf("measure work store size after %s at %s: %w", ti.IssueID, to, err)
+		return MetricSample{}, fmt.Errorf("measure work store size after %s at %s: %w", ti.IssueID, to, err)
 	}
 	if err := store.WriteMetricSample(MetricSample{
 		RunID: runID, Name: "storage_bytes", Value: float64(size), SampledAt: time.Now().UTC(),
 	}); err != nil {
-		return fmt.Errorf("write storage metric for %s at %s: %w", ti.IssueID, to, err)
+		return MetricSample{}, fmt.Errorf("write storage metric for %s at %s: %w", ti.IssueID, to, err)
 	}
 
-	return nil
+	return latencySample, nil
 }
 
 // selectSample returns all of steps, copied, when n<=0 or n>=len(steps)

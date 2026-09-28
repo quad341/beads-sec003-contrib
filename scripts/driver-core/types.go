@@ -47,12 +47,16 @@ type Mismatch struct {
 	ActualJSON   json.RawMessage `json:"actual_json"`
 }
 
-// MetricSample is the ERD's METRIC_SAMPLE entity: one raw measurement.
-// Driver-core emits these directly (be-sodi8 AC4) -- percentile aggregation
-// is a downstream consumer's job (be-hs42e.5.3), not this bead's.
+// MetricSample is the ERD's METRIC_SAMPLE entity: one raw measurement or
+// aggregate. Driver-core emits raw samples directly (be-sodi8 AC4:
+// "storage_bytes", "write_latency_ms"); be-hs42e.5.3 adds growth samples
+// ("issue_versions_bytes", "retained_payload_bytes", "tombstone_count",
+// tagged Phase "baseline"/"final") and percentile aggregates
+// ("write_latency_p50_ms"/"p95_ms"/"p99_ms", tagged Phase "aggregate").
 type MetricSample struct {
 	RunID     string    `json:"run_id"`
-	Name      string    `json:"name"` // "storage_bytes" | "write_latency_ms"
+	Name      string    `json:"name"`
+	Phase     string    `json:"phase,omitempty"`
 	Value     float64   `json:"value"`
 	SampledAt time.Time `json:"sampled_at"`
 }

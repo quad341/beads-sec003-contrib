@@ -77,9 +77,9 @@ func insertVersion(t *testing.T, dataDir, issueID string, revision int, payload 
 // §10's full historical-accumulation dimension: every revision of every
 // issue counts, live or not.
 func TestIssueVersionsBytes_SumsAllRevisionsAcrossAllIssues(t *testing.T) {
-	requireBd(t)
+	requireHeadBd(t)
 	requireDolt(t)
-	dir := initBdProject(t, "proj")
+	dir := initBdProjectWith(t, "proj", headBd)
 	dd := dataDir(t, dir)
 
 	p1, p2, p3 := `{"a":1}`, `{"a":22}`, `{"a":333}`
@@ -102,14 +102,14 @@ func TestIssueVersionsBytes_SumsAllRevisionsAcrossAllIssues(t *testing.T) {
 // issue counts, and only for issues still live in the issues table -- the
 // payload a compaction pass could not discard without losing current state.
 func TestRetainedPayloadBytes_OnlyLatestRevisionOfLiveIssues(t *testing.T) {
-	requireBd(t)
+	requireHeadBd(t)
 	requireDolt(t)
-	dir := initBdProject(t, "proj")
+	dir := initBdProjectWith(t, "proj", headBd)
 	dd := dataDir(t, dir)
 
-	outA := runBd(t, dir, "create", "Issue A", "--type", "task", "--json")
+	outA := runBdBin(t, headBd, dir, "create", "Issue A", "--type", "task", "--json")
 	idA := jsonID(t, outA)
-	outB := runBd(t, dir, "create", "Issue B", "--type", "task", "--json")
+	outB := runBdBin(t, headBd, dir, "create", "Issue B", "--type", "task", "--json")
 	idB := jsonID(t, outB)
 
 	pA1, pA2 := `{"a":1}`, `{"a":222222}`
@@ -142,12 +142,12 @@ func TestRetainedPayloadBytes_OnlyLatestRevisionOfLiveIssues(t *testing.T) {
 // orphaned issue_id. Counts distinct issue_ids, not rows: an orphan with
 // several surviving revisions is still one tombstoned issue.
 func TestTombstoneCount_CountsDistinctOrphanedIssueIDs(t *testing.T) {
-	requireBd(t)
+	requireHeadBd(t)
 	requireDolt(t)
-	dir := initBdProject(t, "proj")
+	dir := initBdProjectWith(t, "proj", headBd)
 	dd := dataDir(t, dir)
 
-	outA := runBd(t, dir, "create", "Issue A", "--type", "task", "--json")
+	outA := runBdBin(t, headBd, dir, "create", "Issue A", "--type", "task", "--json")
 	idA := jsonID(t, outA)
 	insertVersion(t, dd, idA, 1, `{"a":1}`)
 
@@ -169,9 +169,9 @@ func TestTombstoneCount_CountsDistinctOrphanedIssueIDs(t *testing.T) {
 // growth queries, tagged with the caller's run_id and phase and a single
 // captured_at.
 func TestCaptureGrowthMetrics_TagsRunIDAndPhase(t *testing.T) {
-	requireBd(t)
+	requireHeadBd(t)
 	requireDolt(t)
-	dir := initBdProject(t, "proj")
+	dir := initBdProjectWith(t, "proj", headBd)
 	dd := dataDir(t, dir)
 	insertVersion(t, dd, "issue-1", 1, `{"a":1}`)
 
