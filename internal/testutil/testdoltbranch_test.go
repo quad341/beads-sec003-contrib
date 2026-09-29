@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -245,5 +246,88 @@ func TestSetupSharedTestDB_VisibilityWait_GivesUpWhenNeverVisible(t *testing.T) 
 	var mysqlErr *mysql.MySQLError
 	if !errors.As(err, &mysqlErr) || mysqlErr.Number != 1049 {
 		t.Errorf("error %q does not wrap the server's last 1049; a timeout must say what the server kept answering", err)
+	}
+}
+
+// TestCreateSharedDatabase_CreatesThenWaitsForVisibility pins how the be-s9d
+// fix is wired in, which the waitForDatabaseVisible tests above cannot: they
+// call the wait directly, so a createSharedDatabase that stopped calling it
+// would still pass them, and a healthy server never shows the race that a
+// real-server test would need. The database must be created first, and the
+// helper must not return until USE has stopped reporting a catalog miss.
+func TestCreateSharedDatabase_CreatesThenWaitsForVisibility(t *testing.T) {
+	const dbName = "shared_catalog_race"
+	const misses = 3
+	exec := &scriptedExec{respond: func(attempt int) error {
+		// Attempt 1 is the CREATE; the USEs after it miss until the catalog
+		// has caught up.
+		if attempt > 1 && attempt <= 1+misses {
+			return catalogMiss(dbName)
+		}
+		return nil
+	}}
+
+	if err := createSharedDatabase(context.Background(), exec, dbName); err != nil {
+		t.Fatalf("createSharedDatabase: %v", err)
+	}
+
+	want := []string{"CREATE DATABASE IF NOT EXISTS `" + dbName + "`"}
+	want = append(want, slices.Repeat([]string{"USE `" + dbName + "`"}, misses+1)...)
+	if !slices.Equal(exec.queries, want) {
+		t.Errorf("statements = %q\nwant         %q\n(CREATE first, then USE until its %d catalog misses clear)", exec.queries, want, misses)
+	}
+}
+
+// TestCreateSharedDatabase_ToleratesDatabaseAlreadyExisting covers a database
+// left by an earlier setup call: Dolt may answer CREATE DATABASE IF NOT EXISTS
+// with error 1007 anyway. That is not a setup failure, and the wait must still
+// run, since the database may be as invisible to this connection as a fresh one.
+func TestCreateSharedDatabase_ToleratesDatabaseAlreadyExisting(t *testing.T) {
+	const dbName = "shared_catalog_race"
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{
+		{"database exists wording", errors.New("can't create database " + dbName + "; database exists")},
+		// The number alone must be enough, so a server rewording its message does
+		// not silently turn "already there" into a hard failure.
+		{"typed 1007 with unrecognised wording", &mysql.MySQLError{Number: 1007, SQLState: [5]byte{'H', 'Y', '0', '0', '0'}, Message: "can't create schema " + dbName + "; schema exists"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			exec := &scriptedExec{respond: func(attempt int) error {
+				if attempt == 1 {
+					return tc.err // the CREATE
+				}
+				return nil
+			}}
+
+			if err := createSharedDatabase(context.Background(), exec, dbName); err != nil {
+				t.Fatalf("createSharedDatabase: %v", err)
+			}
+			if len(exec.queries) != 2 || !strings.HasPrefix(exec.queries[1], "USE ") {
+				t.Errorf("statements = %q, want the CREATE followed by a USE: an existing database still gets the visibility wait", exec.queries)
+			}
+		})
+	}
+}
+
+// TestCreateSharedDatabase_CreateFailureIsNotWaitedOut keeps the wait from
+// papering over a CREATE that really failed: the error must surface at once,
+// not after a poll for a database that was never made.
+func TestCreateSharedDatabase_CreateFailureIsNotWaitedOut(t *testing.T) {
+	const dbName = "shared_catalog_race"
+	createErr := &mysql.MySQLError{Number: 1044, SQLState: [5]byte{'4', '2', '0', '0', '0'}, Message: "Access denied for user 'root'@'%' to database '" + dbName + "'"}
+	exec := &scriptedExec{respond: func(int) error { return createErr }}
+
+	err := createSharedDatabase(context.Background(), exec, dbName)
+
+	if !errors.Is(err, createErr) {
+		t.Fatalf("createSharedDatabase = %v, want it to wrap %v", err, createErr)
+	}
+	if !strings.Contains(err.Error(), "create database") {
+		t.Errorf("error %q does not say the CREATE failed", err)
+	}
+	if len(exec.queries) != 1 {
+		t.Errorf("statements = %q, want only the CREATE: a failed CREATE must not go on to poll USE", exec.queries)
 	}
 }
