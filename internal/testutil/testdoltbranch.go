@@ -171,22 +171,8 @@ func SetupSharedTestDB(port int, dbName string) (*sql.DB, error) {
 		return nil, fmt.Errorf("SetupSharedTestDB: REFUSED — port %d disagrees with ambient BEADS_DOLT_SERVER_PORT=%s", port, ambient)
 	}
 
-	// Create the shared database
-	//nolint:gosec // G201: dbName comes from test infrastructure
-	_, err = db.ExecContext(ctx, fmt.Sprintf("CREATE DATABASE IF NOT EXISTS `%s`", dbName))
-	if err != nil {
-		// Dolt may return error 1007 even with IF NOT EXISTS
-		errLower := strings.ToLower(err.Error())
-		if !strings.Contains(errLower, "database exists") && !strings.Contains(errLower, "1007") {
-			_ = db.Close()
-			return nil, fmt.Errorf("SetupSharedTestDB: create database: %w", err)
-		}
-	}
-
-	// The server registers a new database in its catalog shortly after CREATE
-	// DATABASE returns; a sibling connection opened before that fails with
-	// "Error 1049 (HY000): database not found" (be-s9d). Wait it out here.
-	if err := waitForDatabaseVisible(ctx, db, dbName); err != nil {
+	// Create the shared database, and wait for the server to show it
+	if err := createSharedDatabase(ctx, db, dbName); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("SetupSharedTestDB: %w", err)
 	}
@@ -195,6 +181,27 @@ func SetupSharedTestDB(port int, dbName string) (*sql.DB, error) {
 	CleanTestBranches(db, dbName)
 
 	return db, nil
+}
+
+// createSharedDatabase creates the shared test database and returns once the
+// server reports it as available.
+//
+// The server registers a new database in its catalog shortly after CREATE
+// DATABASE returns; a sibling connection opened before that fails with
+// "Error 1049 (HY000): database not found" (be-s9d). The create and the wait
+// share one helper so a test can script the server's answers and pin that the
+// wait follows the create.
+func createSharedDatabase(ctx context.Context, db doltBranchSQL, dbName string) error {
+	//nolint:gosec // G201: dbName comes from test infrastructure
+	if _, err := db.ExecContext(ctx, fmt.Sprintf("CREATE DATABASE IF NOT EXISTS `%s`", dbName)); err != nil {
+		// Dolt may return error 1007 even with IF NOT EXISTS
+		errLower := strings.ToLower(err.Error())
+		if !strings.Contains(errLower, "database exists") && !strings.Contains(errLower, "1007") {
+			return fmt.Errorf("create database: %w", err)
+		}
+	}
+
+	return waitForDatabaseVisible(ctx, db, dbName)
 }
 
 // databaseVisibleTimeout bounds waitForDatabaseVisible. It is a ceiling, not an
