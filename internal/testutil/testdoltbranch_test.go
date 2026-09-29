@@ -140,6 +140,9 @@ func TestSetupSharedTestDB_VisibilityWait_RetriesEveryCatalogMissWording(t *test
 	}{
 		{"dolt typed 1049", catalogMiss(dbName)},
 		{"mysql typed 1049", &mysql.MySQLError{Number: 1049, SQLState: [5]byte{'4', '2', '0', '0', '0'}, Message: "Unknown database '" + dbName + "'"}},
+		// The number alone must be enough, so a server rewording its message
+		// does not silently turn a catalog miss into a hard failure.
+		{"typed 1049 with unrecognised wording", &mysql.MySQLError{Number: 1049, SQLState: [5]byte{'H', 'Y', '0', '0', '0'}, Message: "no such schema: " + dbName}},
 		{"dolt text only", fmt.Errorf("use %s: %s", dbName, catalogMiss(dbName))},
 		{"mysql text only", errors.New("Error 1049 (42000): Unknown database '" + dbName + "'")},
 	} {
@@ -187,6 +190,30 @@ func TestSetupSharedTestDB_VisibilityWait_PermanentErrorsAreNotRetried(t *testin
 				t.Errorf("USE attempts = %d, want 1: a permanent error must fail fast, not be retried", len(exec.queries))
 			}
 		})
+	}
+}
+
+// TestSetupSharedTestDB_VisibilityWait_DeadlineMidStatementKeepsLastMiss covers
+// the deadline landing while a USE is in flight, where database/sql reports the
+// cancellation rather than the server's answer: the error must still carry the
+// last "database not found" so the failure says what was actually wrong.
+func TestSetupSharedTestDB_VisibilityWait_DeadlineMidStatementKeepsLastMiss(t *testing.T) {
+	const dbName = "shared_catalog_race"
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	exec := &scriptedExec{respond: func(attempt int) error {
+		if attempt < 3 {
+			return catalogMiss(dbName)
+		}
+		cancel()
+		return context.Canceled
+	}}
+
+	err := waitForDatabaseVisible(ctx, exec, dbName)
+
+	var mysqlErr *mysql.MySQLError
+	if !errors.As(err, &mysqlErr) || mysqlErr.Number != 1049 {
+		t.Fatalf("waitForDatabaseVisible = %v, want it to wrap the server's last 1049, not only the cancellation", err)
 	}
 }
 

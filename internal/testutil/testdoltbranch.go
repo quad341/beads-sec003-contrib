@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -13,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	_ "github.com/go-sql-driver/mysql" // MySQL driver for direct DB connections
+	"github.com/go-sql-driver/mysql" // also registers the MySQL driver for direct DB connections
 	"github.com/steveyegge/beads/internal/storage/doltutil"
 )
 
@@ -139,6 +140,10 @@ func CleanTestBranches(db *sql.DB, database string) {
 //
 // The schema is committed to main so that DOLT_BRANCH creates COW snapshots
 // of the full schema. Each test then branches from main with StartTestBranch.
+//
+// It returns only once the new database is visible to the server, so a
+// connection opened straight afterwards (dolt.New inside initSharedSchema)
+// finds it.
 func SetupSharedTestDB(port int, dbName string) (*sql.DB, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -178,10 +183,73 @@ func SetupSharedTestDB(port int, dbName string) (*sql.DB, error) {
 		}
 	}
 
+	// The server registers a new database in its catalog shortly after CREATE
+	// DATABASE returns; a sibling connection opened before that fails with
+	// "Error 1049 (HY000): database not found" (be-s9d). Wait it out here.
+	if err := waitForDatabaseVisible(ctx, db, dbName); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("SetupSharedTestDB: %w", err)
+	}
+
 	// Switch to the database and clean stale branches
 	CleanTestBranches(db, dbName)
 
 	return db, nil
+}
+
+// databaseVisibleTimeout bounds waitForDatabaseVisible. It is a ceiling, not an
+// expectation: a database that really is missing fails with an error instead
+// of hanging TestMain.
+const databaseVisibleTimeout = 10 * time.Second
+
+// waitForDatabaseVisible polls USE <dbName> until the server reports the
+// database as available, backing off exponentially from 50ms up to 1s. Only
+// "database not found" is waited out; any other error is returned at once.
+// dolt.New backs off after its own CREATE DATABASE for the same catalog race
+// (GH-1851); this does it for the database SetupSharedTestDB creates.
+func waitForDatabaseVisible(ctx context.Context, db doltBranchSQL, dbName string) error {
+	ctx, cancel := context.WithTimeout(ctx, databaseVisibleTimeout)
+	defer cancel()
+
+	var lastMiss error
+	delay := 50 * time.Millisecond
+	for {
+		//nolint:gosec // G201: dbName comes from test infrastructure
+		_, err := db.ExecContext(ctx, fmt.Sprintf("USE `%s`", dbName))
+		switch {
+		case err == nil:
+			return nil
+		case isDatabaseNotFound(err):
+			lastMiss = err
+		case ctx.Err() != nil && lastMiss != nil:
+			// The deadline landed mid-statement: report what the server kept
+			// answering, not the cancellation it cut short.
+			return fmt.Errorf("database %q not visible: %w", dbName, lastMiss)
+		default:
+			return fmt.Errorf("use database %q: %w", dbName, err)
+		}
+
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("database %q not visible: %w", dbName, lastMiss)
+		case <-time.After(delay):
+		}
+		delay = min(2*delay, time.Second)
+	}
+}
+
+// isDatabaseNotFound reports whether err says the database does not exist:
+// MySQL error 1049, or the "database not found" (Dolt) / "unknown database"
+// (stock MySQL) wording for callers that flattened the driver error to text.
+// It mirrors uow.isDatabaseNotFoundError, which testutil cannot import (uow's
+// tests import testutil).
+func isDatabaseNotFound(err error) bool {
+	var mysqlErr *mysql.MySQLError
+	if errors.As(err, &mysqlErr) && mysqlErr.Number == 1049 {
+		return true
+	}
+	errLower := strings.ToLower(err.Error())
+	return strings.Contains(errLower, "database not found") || strings.Contains(errLower, "unknown database")
 }
 
 type doltIgnoreRow struct {
