@@ -762,6 +762,11 @@ func (s *EmbeddedDoltStore) BackupDatabase(ctx context.Context, dir string) erro
 // RestoreDatabase restores the database from a Dolt backup at dir.
 // The dir must exist locally and contain a valid Dolt backup.
 // When force is true, an existing database is overwritten.
+//
+// A successful restore bumps store_epoch (R20-m) as its own step AFTER
+// BackupRestore returns success — see BumpEpoch's doc comment for why this
+// runs as a second, separate step rather than inside BackupRestore's own
+// connection use.
 func (s *EmbeddedDoltStore) RestoreDatabase(ctx context.Context, dir string, force bool) error {
 	info, err := os.Stat(dir)
 	if err != nil {
@@ -776,7 +781,55 @@ func (s *EmbeddedDoltStore) RestoreDatabase(ctx context.Context, dir string, for
 		return err
 	}
 
-	return s.withMutatingDBConn(ctx, func(db versioncontrolops.DBConn) error {
+	if err := s.withMutatingDBConn(ctx, func(db versioncontrolops.DBConn) error {
 		return versioncontrolops.BackupRestore(ctx, db, backupURL, s.database, force)
+	}); err != nil {
+		return err
+	}
+	if _, err := s.BumpEpoch(ctx, issueops.EpochBumpReasonRestore); err != nil {
+		return fmt.Errorf("bump store epoch after restore: %w", err)
+	}
+	return nil
+}
+
+// CurrentEpoch returns store_epoch's shared value, seeding it at 1 on first
+// read (see issueops.CurrentEpochInTx).
+func (s *EmbeddedDoltStore) CurrentEpoch(ctx context.Context) (int, error) {
+	var epoch int
+	err := s.withConn(ctx, false, func(tx *sql.Tx) error {
+		var txErr error
+		epoch, txErr = issueops.CurrentEpochInTx(ctx, tx)
+		return txErr
 	})
+	return epoch, err
+}
+
+// BumpEpoch advances store_epoch by one, recording reason, and returns the
+// new value. reason should be one of the issueops.EpochBumpReasonXxx
+// constants.
+//
+// Mirrors recomputeBlockedAfterPull's two-phase shape for the same reason
+// documented on DoltStore.BumpEpoch's HAZARD block (dolt/store.go): the SQL
+// update must be committed (withConn(ctx, true, ...) commits on fn success)
+// BEFORE store_epoch is staged and Dolt-committed, or the Dolt commit would
+// be built from the pre-update snapshot and silently revert the bump. Errors
+// from the second phase are propagated, not swallowed — a restore is a rare,
+// operator-driven call, not an automated-retry path.
+func (s *EmbeddedDoltStore) BumpEpoch(ctx context.Context, reason string) (int, error) {
+	var epoch int
+	if err := s.withConn(ctx, true, func(tx *sql.Tx) error {
+		var txErr error
+		epoch, txErr = issueops.BumpEpochInTx(ctx, tx, reason)
+		return txErr
+	}); err != nil {
+		return 0, err
+	}
+	if err := s.withMutatingDBConn(ctx, func(db versioncontrolops.DBConn) error {
+		return stageAndCommitAfterSQLCommit(ctx, db,
+			map[string]bool{"store_epoch": true},
+			fmt.Sprintf("bd: store epoch bump (%s)", reason), commitAuthor)
+	}); err != nil {
+		return 0, fmt.Errorf("stage store epoch bump: %w", err)
+	}
+	return epoch, nil
 }

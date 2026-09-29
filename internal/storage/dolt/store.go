@@ -1494,6 +1494,15 @@ func (s *DoltStore) BackupDatabase(ctx context.Context, dir string) error {
 
 // RestoreDatabase restores the database from a Dolt backup at dir.
 // When force is true, an existing database is overwritten.
+//
+// A successful restore bumps store_epoch (R20-m): the restored working set
+// can reintroduce addresses whose current meaning changed underneath a token
+// minted before the restore, and the epoch bump is what lets Resolve
+// distinguish "still the version I remember" from "gone-reorganization" for
+// tokens minted under the epoch this restore just closed out. The bump runs
+// as its own step AFTER BackupRestore returns success, never inside the same
+// SQL transaction as the restore (BackupRestore is not itself a transaction
+// this store manages, so there is no in-tx option here regardless).
 func (s *DoltStore) RestoreDatabase(ctx context.Context, dir string, force bool) error {
 	info, err := os.Stat(dir)
 	if err != nil {
@@ -1512,7 +1521,69 @@ func (s *DoltStore) RestoreDatabase(ctx context.Context, dir string, force bool)
 		return err
 	}
 	defer db.Close()
-	return versioncontrolops.BackupRestore(ctx, db, backupURL, s.database, force)
+	if err := versioncontrolops.BackupRestore(ctx, db, backupURL, s.database, force); err != nil {
+		return err
+	}
+	if _, err := s.BumpEpoch(ctx, issueops.EpochBumpReasonRestore); err != nil {
+		return fmt.Errorf("bump store epoch after restore: %w", err)
+	}
+	return nil
+}
+
+// CurrentEpoch returns store_epoch's shared value, seeding it at 1 on first
+// read (see issueops.CurrentEpochInTx).
+func (s *DoltStore) CurrentEpoch(ctx context.Context) (int, error) {
+	var epoch int
+	err := s.withReadTx(ctx, func(tx *sql.Tx) error {
+		var txErr error
+		epoch, txErr = issueops.CurrentEpochInTx(ctx, tx)
+		return txErr
+	})
+	return epoch, err
+}
+
+// BumpEpoch advances store_epoch by one, recording reason, and returns the
+// new value. reason should be one of the issueops.EpochBumpReasonXxx
+// constants.
+//
+// DOLT LOST-UPDATE HAZARD (see doltAddAndCommitInTx's HAZARD block on
+// ephemeral_routing.go): staging and committing store_epoch from INSIDE the
+// SQL transaction that bumps it would build the Dolt commit from that
+// transaction's BEGIN-time snapshot, silently reverting the bump — and
+// store_epoch is append-only-by-convention (VersionedHistoryStagedTables'
+// "THE PLANE DECISION" comment), so a reverted row here is never rewritten by
+// a later mutation the way an ordinary issues row would be. This method
+// therefore runs in two ordered steps: commit the SQL update FIRST (a plain
+// s.db.BeginTx, not commitWriteTx — a restore is not an issue mutation and
+// needs none of that helper's journal/version-history/blocked-recheck
+// scoping), then separately stage+commit the working set via
+// doltAddAndCommit (not the retry-wrapped, failure-swallowing
+// doltAddAndCommitPostTx: that variant exists for automated/retriable issue
+// mutations where double-apply is the risk to avoid; a restore is a rare,
+// operator-driven, one-shot call where the operator seeing a publication
+// failure is the safer default, and the CLI's own outer post-restore
+// s.Commit call already provides a second chance to stage this same row).
+func (s *DoltStore) BumpEpoch(ctx context.Context, reason string) (int, error) {
+	if s.closed.Load() {
+		return 0, ErrStoreClosed
+	}
+	var epoch int
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("begin store epoch bump tx: %w", err)
+	}
+	epoch, err = issueops.BumpEpochInTx(ctx, tx, reason)
+	if err != nil {
+		return 0, errors.Join(err, tx.Rollback())
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, wrapSQLCommitError("commit store epoch bump", err)
+	}
+	if err := s.doltAddAndCommit(ctx, []string{"store_epoch"},
+		fmt.Sprintf("bd: store epoch bump (%s)", reason)); err != nil {
+		return 0, fmt.Errorf("stage store epoch bump: %w", err)
+	}
+	return epoch, nil
 }
 
 // QueryContext wraps s.db.QueryContext with retry for transient errors.
