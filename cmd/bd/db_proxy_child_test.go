@@ -94,3 +94,30 @@ func TestDbProxyChildRegistersExternalFlags(t *testing.T) {
 		})
 	}
 }
+
+// TestDbProxyChildIdleTimeoutHelpNamesEphemeralRoot guards be-7272o's
+// acceptance criteria: the hidden db-proxy-child command's own --idle-timeout
+// flag must not describe "0 or negative = never shut down" in isolation now
+// that BEADS_EPHEMERAL_ROOT exists -- a reader would wrongly conclude 0 is
+// always safe to pass here. It must name the env var, mirroring init.go's
+// --proxied-server-idle-timeout help (gastownhall/beads#6755, be-466tg's
+// response commit: TestInitIdleTimeoutHelpNamesEphemeralRoot).
+func TestDbProxyChildIdleTimeoutHelpNamesEphemeralRoot(t *testing.T) {
+	f := dbProxyChildCmd.Flags().Lookup("idle-timeout")
+	require.NotNil(t, f, "db-proxy-child does not register --idle-timeout")
+	assert.Contains(t, f.Usage, "BEADS_EPHEMERAL_ROOT=1",
+		"db-proxy-child --idle-timeout help does not name BEADS_EPHEMERAL_ROOT=1")
+}
+
+// TestDbProxyChildIdleTimeoutHelpHasNoForcedWindow guards against
+// reintroducing the 45s forced-default-window design be-hjyio's 2026-09-26
+// re-scoping ruling dropped (be-djq0v notes): the corrected
+// BEADS_EPHEMERAL_ROOT semantics are fail-fast-only on an explicit 0 or
+// negative value, never a silent override of an omitted or explicit
+// positive idle-timeout.
+func TestDbProxyChildIdleTimeoutHelpHasNoForcedWindow(t *testing.T) {
+	f := dbProxyChildCmd.Flags().Lookup("idle-timeout")
+	require.NotNil(t, f, "db-proxy-child does not register --idle-timeout")
+	assert.NotContains(t, f.Usage, "45s",
+		"db-proxy-child --idle-timeout help mentions a 45s forced window, which be-hjyio's re-scoping dropped")
+}
