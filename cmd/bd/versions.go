@@ -54,6 +54,12 @@ const (
 	// (issueops.AsOfRestriction) and must not race to pick different
 	// numbers for the same class.
 	ExitVersionsGone = 23
+	// ExitVersionsValidationFailure means the request itself never reached a
+	// lookup -- e.g. an id prefix that matches more than one issue
+	// (utils.ErrAmbiguousID). This is #5898's fourth refusal class:
+	// distinct from the three above because those all need issueID resolved
+	// first, and this fires before resolution succeeds.
+	ExitVersionsValidationFailure = 24
 )
 
 // versionsOutcome is what runVersions resolved, kept apart from the rendering
@@ -122,7 +128,7 @@ Examples:
 		if full, err := utils.ResolvePartialID(rootCtx, store, issueID); err == nil {
 			issueID, resolved = full, true
 		} else if errors.Is(err, utils.ErrAmbiguousID) {
-			return HandleErrorRespectJSON("%v", err)
+			return versionsExitError(err, issueID)
 		}
 
 		recording := versionedHistoryEnabled(rootCtx, store)
@@ -164,6 +170,8 @@ func versionsExitError(err error, issueID string) error {
 		return HandleErrorRespectJSONWithCode(ExitVersionsUnsupported,
 			"this storage backend cannot serve version history (proxied, no-db and non-Dolt backends cannot).\n"+
 				"Run this against a Dolt-backed workspace.")
+	case errors.Is(err, utils.ErrAmbiguousID):
+		return HandleErrorRespectJSONWithCode(ExitVersionsValidationFailure, "%v", err)
 	default:
 		return HandleErrorRespectJSON("failed to list versions: %v", err)
 	}
