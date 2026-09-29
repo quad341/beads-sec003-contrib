@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/steveyegge/beads/internal/storage"
+	"github.com/steveyegge/beads/internal/utils"
 )
 
 type fakeVersionLister struct {
@@ -201,16 +202,18 @@ func TestVersionsJSONDoesNotCollideWithIssueRevision(t *testing.T) {
 // fix.
 func TestVersionsExitCodesAreStableAndDistinct(t *testing.T) {
 	want := map[string]int{
-		"ExitVersionsFeatureOff":  20,
-		"ExitVersionsNotFound":    21,
-		"ExitVersionsUnsupported": 22,
-		"ExitVersionsGone":        23,
+		"ExitVersionsFeatureOff":        20,
+		"ExitVersionsNotFound":          21,
+		"ExitVersionsUnsupported":       22,
+		"ExitVersionsGone":              23,
+		"ExitVersionsValidationFailure": 24,
 	}
 	got := map[string]int{
-		"ExitVersionsFeatureOff":  ExitVersionsFeatureOff,
-		"ExitVersionsNotFound":    ExitVersionsNotFound,
-		"ExitVersionsUnsupported": ExitVersionsUnsupported,
-		"ExitVersionsGone":        ExitVersionsGone,
+		"ExitVersionsFeatureOff":        ExitVersionsFeatureOff,
+		"ExitVersionsNotFound":          ExitVersionsNotFound,
+		"ExitVersionsUnsupported":       ExitVersionsUnsupported,
+		"ExitVersionsGone":              ExitVersionsGone,
+		"ExitVersionsValidationFailure": ExitVersionsValidationFailure,
 	}
 	seen := map[int]string{}
 	for name, code := range got {
@@ -239,6 +242,8 @@ func TestVersionsExitErrorMapsSentinelsToDistinctCodes(t *testing.T) {
 		{"feature off", errVersionedHistoryOff, ExitVersionsFeatureOff},
 		{"unsupported backend", errVersionsUnsupported, ExitVersionsUnsupported},
 		{"wrapped not found", fmt.Errorf("resolve: %w", errNoSuchBead), ExitVersionsNotFound},
+		{"ambiguous id", utils.ErrAmbiguousID, ExitVersionsValidationFailure},
+		{"wrapped ambiguous id", fmt.Errorf("resolve: %w", utils.ErrAmbiguousID), ExitVersionsValidationFailure},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
