@@ -95,7 +95,7 @@ func TestStrictReadonlySharedAcrossEmbeddedAndServerPaths(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			policy := effectiveRootStorePolicy(tc.command, tc.strictReadonly)
 
-			// Embedded-store path (cmd/bd/store_factory.go:87): strict mode is
+			// Embedded-store path (cmd/bd/store_factory.go): strict mode is
 			// cfg.DisableAutoStart, sourced directly from policy.disableAutoStart.
 			embeddedStrict := policy.disableAutoStart
 
