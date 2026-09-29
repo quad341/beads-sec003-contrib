@@ -18,10 +18,9 @@ import (
 // brand-new session, so the next dolt.New / initSharedSchema against it cannot
 // fail with "Error 1049 (HY000): database not found: <name>".
 //
-// On a healthy local server the race behind that failure does not reproduce
-// (be-cmnfp.1 measured 0 failures in 890 attempts against dolt 2.2.0), so these
-// tests guard the end-to-end contract rather than detect the race. The wait
-// that closes it is pinned deterministically in internal/testutil, where a
+// On a healthy local server the race behind that failure does not reproduce, so
+// these tests guard the end-to-end contract rather than detect the race. The
+// wait that closes it is pinned deterministically in internal/testutil, where a
 // scripted server answer stands in for the lagging catalog.
 
 // setupSharedTestDB runs SetupSharedTestDB for a fresh, uniquely named
