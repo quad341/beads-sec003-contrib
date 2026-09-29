@@ -170,13 +170,8 @@ func newUOWEpochFixture(t *testing.T, ctx context.Context, prefix string) confor
 				if _, err := uowCurrentEpochInTx(ctx, uw); err != nil {
 					return 0, "", fmt.Errorf("store epoch: bump: ensure seeded: %w", err)
 				}
-				// TEMPORARY RED (mol-tdd-build be-kt083 / be-s5rvc): dropped
-				// "epoch = epoch + 1," to match the same deliberate regression in
-				// issueops.BumpEpochInTx (this leg reimplements the statement rather
-				// than calling that helper — see uowCurrentEpochInTx's doc comment).
-				// Restored verbatim for GREEN.
 				if _, err := uw.RawSQLUseCase().Exec(ctx,
-					"UPDATE store_epoch SET bumped_at = ?, bumped_reason = ? WHERE id = 1",
+					"UPDATE store_epoch SET epoch = epoch + 1, bumped_at = ?, bumped_reason = ? WHERE id = 1",
 					time.Now().UTC(), trigger.String(),
 				); err != nil {
 					return 0, "", fmt.Errorf("store epoch: bump: %w", err)

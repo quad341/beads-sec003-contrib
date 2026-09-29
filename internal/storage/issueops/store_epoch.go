@@ -72,13 +72,8 @@ func BumpEpochInTx(ctx context.Context, tx DBTX, reason string) (int, error) {
 		return 0, fmt.Errorf("store epoch: bump: ensure seeded: %w", err)
 	}
 
-	// TEMPORARY RED (mol-tdd-build be-kt083 / be-s5rvc): dropped "epoch = epoch + 1,"
-	// on purpose so RunAnEpochBumpIsTriggeredOnlyByRestoreReinitOrSchemeChange
-	// fails for real (bumped_at/bumped_reason advance, epoch does not) instead
-	// of skipping or passing immediately against the already-written store-level
-	// CurrentEpoch/BumpEpoch wiring. Restored verbatim for GREEN.
 	if _, err := tx.ExecContext(ctx,
-		"UPDATE store_epoch SET bumped_at = ?, bumped_reason = ? WHERE id = 1",
+		"UPDATE store_epoch SET epoch = epoch + 1, bumped_at = ?, bumped_reason = ? WHERE id = 1",
 		time.Now().UTC(), reason,
 	); err != nil {
 		return 0, fmt.Errorf("store epoch: bump: %w", err)
