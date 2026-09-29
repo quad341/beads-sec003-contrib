@@ -82,6 +82,7 @@ go_library(
         "search_counts.go",
         "stale.go",
         "statistics.go",
+        "store_epoch.go",
         "sweep.go",
         "tree_walk.go",
         "unclaim.go",
