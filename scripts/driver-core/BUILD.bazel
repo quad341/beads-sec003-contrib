@@ -39,6 +39,7 @@ go_test(
         "fixture_test.go",
         "integration_test.go",
         "mutationkind_test.go",
+        "prune_retention_test.go",
         "refname_test.go",
         "replay_test.go",
         "run_test.go",
