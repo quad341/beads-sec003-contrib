@@ -91,6 +91,7 @@ go_library(
         "version.go",
         "version_commit.go",
         "version_history.go",
+        "version_removal.go",
         "wake_defers.go",
         "wisp_filter_convert.go",
         "wisp_routing.go",
@@ -178,6 +179,7 @@ go_test(
         "version_completeness_test.go",
         "version_history_durable_state_test.go",
         "version_history_test.go",
+        "version_removal_test.go",
         "wisp_routing_test.go",
     ],
     data = glob(["testdata/**"]) + [

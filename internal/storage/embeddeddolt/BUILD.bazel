@@ -213,6 +213,7 @@ go_test(
         "update_mergeops_test.go",
         "version_completeness_behaviour_test.go",
         "version_reconciler_contract_test.go",
+        "version_removal_test.go",
         "workspace_config_contract_test.go",
     ],
     embed = [":embeddeddolt"],

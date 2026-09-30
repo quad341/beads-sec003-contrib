@@ -337,6 +337,7 @@ go_test(
         "update_same_status_test.go",
         "version_commit_deferred_test.go",
         "version_reconciler_contract_test.go",
+        "version_removal_test.go",
         "version_scope_completeness_test.go",
         "version_staging_completeness_test.go",
         "versioned_test.go",
