@@ -74,6 +74,15 @@ func TestEpochContract(t *testing.T) {
 		conformance.RunAnEpochBumpIsTriggeredOnlyByRestoreReinitOrSchemeChange(t, ctx, fixture)
 	})
 	t.Run("EpochBumpVoidsOnlyAddressesOfVersionsNoLongerServed", func(t *testing.T) {
+		// A skip is green, so without this check the voiding half of R20-n could
+		// go unexercised on this leg with nothing failing: the case skips itself
+		// whenever StillServes answers the same for every address. This leg can
+		// make one version stop being served, so a skip here is a failure.
+		defer func() {
+			if t.Skipped() {
+				t.Error("R20-n skipped on this leg: its fixture must make one minted version stop being served (StillServes false) while another stays served, or the voiding half of the contract never runs")
+			}
+		}()
 		conformance.RunEpochBumpVoidsOnlyAddressesOfVersionsNoLongerServed(t, ctx, fixture)
 	})
 }
