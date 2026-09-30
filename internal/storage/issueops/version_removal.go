@@ -2,7 +2,10 @@ package issueops
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"fmt"
+	"time"
 )
 
 // issue_versions.removed_at / removed_reason (migration 0067, widened by
@@ -41,7 +44,38 @@ var ErrVersionNotFound = errors.New("issue version not found")
 // the issue_versions table, and callers that publish through Dolt must commit
 // this transaction first and stage the working set as a separate later step.
 func RemoveVersionInTx(ctx context.Context, tx DBTX, issueID string, revision int64, reason string) error {
-	// RED stub (mol-tdd-build be-5qmyx): the behavior above is what the tests
-	// specify; GREEN replaces this body.
-	return errors.New("issueops: RemoveVersionInTx not implemented")
+	switch reason {
+	case VersionRemovalReasonRetention, VersionRemovalReasonErasure, VersionRemovalReasonReorganization:
+	default:
+		return fmt.Errorf("issue version removal: unknown reason %q (want %q, %q or %q)",
+			reason, VersionRemovalReasonRetention, VersionRemovalReasonErasure, VersionRemovalReasonReorganization)
+	}
+
+	// Probe first, rather than inferring "absent" from a zero-row UPDATE: a
+	// zero-row UPDATE cannot tell "no such version" from "already removed", and
+	// what RowsAffected counts (changed rows or matched rows) differs by driver.
+	var removed bool
+	err := tx.QueryRowContext(ctx,
+		"SELECT removed_at IS NOT NULL FROM issue_versions WHERE issue_id = ? AND revision = ?",
+		issueID, revision,
+	).Scan(&removed)
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("issue version removal: %s@%d: %w", issueID, revision, ErrVersionNotFound)
+	}
+	if err != nil {
+		return fmt.Errorf("issue version removal: read %s@%d: %w", issueID, revision, err)
+	}
+	if removed {
+		return nil
+	}
+
+	// removed_at IS NULL keeps the first removal winning even if a concurrent
+	// transaction removes this version between the probe above and this write.
+	if _, err := tx.ExecContext(ctx,
+		"UPDATE issue_versions SET removed_at = ?, removed_reason = ? WHERE issue_id = ? AND revision = ? AND removed_at IS NULL",
+		time.Now().UTC(), reason, issueID, revision,
+	); err != nil {
+		return fmt.Errorf("issue version removal: stamp %s@%d: %w", issueID, revision, err)
+	}
+	return nil
 }

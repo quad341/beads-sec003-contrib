@@ -2,6 +2,8 @@ package dolt
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -9,6 +11,7 @@ import (
 
 	"github.com/steveyegge/beads/backend/conformance"
 	"github.com/steveyegge/beads/internal/storage"
+	"github.com/steveyegge/beads/internal/storage/issueops"
 	"github.com/steveyegge/beads/internal/types"
 )
 
@@ -121,19 +124,17 @@ func parseDoltEpochAddress(address conformance.Address) (issueID string, revisio
 // current_revision (what CurrentAddressFor re-reads) only advances when
 // RecordVersionInTx is active.
 //
-// StillServes/Resolve share ONE underlying criterion — row-existence in
-// issue_versions for the exact (issueID, revision) the address names — which
-// is deliberate, not a shortcut: nothing in this phase ever removes an
-// issue_versions row, so every address minted by MintUnderEpoch answers
-// "still served" for as long as the issue exists. R20-n's voids case
-// (RunEpochBumpVoidsOnlyAddressesOfVersionsNoLongerServed) needs one minted
-// address to still be served and the other not, to exercise both halves of
-// the contract; this fixture cannot manufacture that contrast (there is no
-// real erasure/reorganization mechanism yet to make one specific version
-// stop being served), so that case hits its own pre-built
-// "servesA == servesB" skip branch here. That is the honest answer for a
-// backend whose store_epoch is real but whose retention/erasure machinery is
-// not, not a gap to paper over.
+// StillServes/Resolve share ONE underlying criterion — a live issue_versions
+// row (removed_at IS NULL) for the exact (issueID, revision) the address
+// names. R20-n's voids case (RunEpochBumpVoidsOnlyAddressesOfVersionsNoLongerServed)
+// needs one minted address to stay served and another not, and this fixture
+// gets that contrast from stored state rather than from anything it
+// remembers: BumpEpoch(Restore) models what a restore does to the epoch it
+// closes — the newest version minted under that epoch is not in the restored
+// state — by soft-removing that row through issueops.RemoveVersionInTx. The
+// removed row stays in issue_versions, so Resolve still finds the issue's
+// lineage and answers gone-reorganization (the only reason this fixture ever
+// removes for) rather than unknown.
 func newDoltEpochFixture(t *testing.T, prefix string) (conformance.EpochFixture, context.Context, func()) {
 	t.Helper()
 	store, storeCleanup := setupTestStore(t)
@@ -156,13 +157,54 @@ func newDoltEpochFixture(t *testing.T, prefix string) (conformance.EpochFixture,
 		return doltEpochAddress(issueID, revision), nil
 	}
 
+	// loseNewestMintUnder soft-removes the newest still-live version minted
+	// under closingEpoch, if any. change_at orders "newest"; issue_id and
+	// revision only break a tie deterministically. The store holds one
+	// connection, so the lookup finishes before the removal transaction opens.
+	loseNewestMintUnder := func(ctx context.Context, closingEpoch int) error {
+		var issueID string
+		var revision int64
+		err := store.db.QueryRowContext(ctx,
+			`SELECT issue_id, revision FROM issue_versions
+			  WHERE epoch = ? AND removed_at IS NULL
+			  ORDER BY change_at DESC, issue_id DESC, revision DESC LIMIT 1`, closingEpoch,
+		).Scan(&issueID, &revision)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil // nothing was minted under the closing epoch, so the restore loses nothing
+		}
+		if err != nil {
+			return fmt.Errorf("find newest version minted under epoch %d: %w", closingEpoch, err)
+		}
+		tx, err := store.db.BeginTx(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("begin removal of %s@%d: %w", issueID, revision, err)
+		}
+		if err := issueops.RemoveVersionInTx(ctx, tx, issueID, revision, issueops.VersionRemovalReasonReorganization); err != nil {
+			return errors.Join(err, tx.Rollback())
+		}
+		return tx.Commit()
+	}
+
 	fixture := conformance.EpochFixture{
 		IssuePrefix: prefix,
 		CurrentEpoch: func(ctx context.Context, storeID string) (int, error) {
 			return store.CurrentEpoch(ctx)
 		},
 		BumpEpoch: func(ctx context.Context, storeID string, trigger conformance.EpochBumpTrigger) (int, error) {
-			return store.BumpEpoch(ctx, trigger.String())
+			closing, err := store.CurrentEpoch(ctx)
+			if err != nil {
+				return 0, err
+			}
+			epoch, err := store.BumpEpoch(ctx, trigger.String())
+			if err != nil {
+				return 0, err
+			}
+			if trigger == conformance.EpochBumpTriggerRestore {
+				if err := loseNewestMintUnder(ctx, closing); err != nil {
+					return 0, fmt.Errorf("model the restore losing a version: %w", err)
+				}
+			}
+			return epoch, nil
 		},
 		MintUnderEpoch: func(ctx context.Context, storeID, id string) (conformance.Address, error) {
 			if err := store.CreateIssue(ctx, &types.Issue{
@@ -179,7 +221,7 @@ func newDoltEpochFixture(t *testing.T, prefix string) (conformance.EpochFixture,
 			}
 			var count int
 			if err := store.db.QueryRowContext(ctx,
-				`SELECT COUNT(*) FROM issue_versions WHERE issue_id = ? AND revision = ?`, issueID, revision,
+				`SELECT COUNT(*) FROM issue_versions WHERE issue_id = ? AND revision = ? AND removed_at IS NULL`, issueID, revision,
 			).Scan(&count); err != nil {
 				return false, err
 			}
@@ -190,13 +232,13 @@ func newDoltEpochFixture(t *testing.T, prefix string) (conformance.EpochFixture,
 			if err != nil {
 				return conformance.RetentionAnswer{}, err
 			}
-			var revisionCount int
+			var liveRevisionCount int
 			if err := store.db.QueryRowContext(ctx,
-				`SELECT COUNT(*) FROM issue_versions WHERE issue_id = ? AND revision = ?`, issueID, revision,
-			).Scan(&revisionCount); err != nil {
-				return conformance.RetentionAnswer{}, fmt.Errorf("resolve %s: count exact revision: %w", address, err)
+				`SELECT COUNT(*) FROM issue_versions WHERE issue_id = ? AND revision = ? AND removed_at IS NULL`, issueID, revision,
+			).Scan(&liveRevisionCount); err != nil {
+				return conformance.RetentionAnswer{}, fmt.Errorf("resolve %s: count live exact revision: %w", address, err)
 			}
-			if revisionCount > 0 {
+			if liveRevisionCount > 0 {
 				return conformance.RetentionAnswer{Restriction: conformance.RestrictionLive, ProducingStore: storeID}, nil
 			}
 			var issueVersionCount int
@@ -208,10 +250,10 @@ func newDoltEpochFixture(t *testing.T, prefix string) (conformance.EpochFixture,
 			if issueVersionCount == 0 {
 				return conformance.RetentionAnswer{Restriction: conformance.RestrictionUnknown, ProducingStore: storeID}, nil
 			}
-			// Reachable once a real erasure/reorganization mechanism can drop
-			// one specific revision while leaving the issue's other versions
-			// in place — not yet, but the answer shape is correct today: name
-			// the epoch the caller must have bumped past to get here.
+			// No live row for this exact revision, but the issue's lineage is
+			// known: the version was removed (BumpEpoch(Restore) soft-removes
+			// one), so name the epoch the caller must have bumped past to get
+			// here.
 			epoch, err := store.CurrentEpoch(ctx)
 			if err != nil {
 				return conformance.RetentionAnswer{}, fmt.Errorf("resolve %s: current epoch: %w", address, err)

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/steveyegge/beads/backend/conformance"
+	"github.com/steveyegge/beads/internal/storage/issueops"
 	"github.com/steveyegge/beads/internal/types"
 )
 
@@ -150,10 +151,13 @@ func uowCurrentEpochInTx(ctx context.Context, uw UnitOfWork) (int, error) {
 // RunTxResult with a real, non-empty commit message — RunTxRead never calls
 // uw.Commit, so using it here would silently roll the bump back.
 //
-// StillServes/Resolve/CurrentAddressFor and the "voids" case's unavoidable
-// skip mirror the dolt leg's fixture exactly -- see its doc comment for why
-// that skip is the honest terminal state here too (nothing yet removes an
-// issue_versions row on any backend).
+// StillServes/Resolve/CurrentAddressFor mirror the dolt leg's fixture -- see
+// its doc comment for how BumpEpoch(Restore) gives R20-n's voids case its one
+// no-longer-served address. The removal is issueops.RemoveVersionInTx's
+// guarded UPDATE re-expressed through RawSQLUseCase, for the same reason
+// BumpEpoch re-expresses BumpEpochInTx: RawSQLUseCase cannot satisfy
+// issueops.DBTX. The row is read immediately before it is stamped, so the
+// probe half of RemoveVersionInTx has nothing left to decide here.
 func newUOWEpochFixture(t *testing.T, ctx context.Context, prefix string) conformance.EpochFixture {
 	t.Helper()
 	provider := newUOWVersionedHistoryProvider(t, ctx, prefix, true)
@@ -167,6 +171,48 @@ func newUOWEpochFixture(t *testing.T, ctx context.Context, prefix string) confor
 		return uowEpochAddress(issueID, revision), nil
 	}
 
+	// loseNewestMintUnder soft-removes the newest still-live version minted
+	// under closingEpoch, if any -- the restore model the dolt leg's fixture
+	// documents. change_at orders "newest"; issue_id and revision only break a
+	// tie deterministically. The lookup is a read transaction so that "nothing
+	// was minted under the closing epoch" (R20-m restores an empty store) opens
+	// no write transaction and commits nothing.
+	loseNewestMintUnder := func(ctx context.Context, closingEpoch int) error {
+		newest, err := RunTxRead(ctx, provider, func(ctx context.Context, uw UnitOfWork) ([]any, error) {
+			result, err := uw.RawSQLUseCase().Query(ctx,
+				`SELECT issue_id, revision FROM issue_versions
+				  WHERE epoch = ? AND removed_at IS NULL
+				  ORDER BY change_at DESC, issue_id DESC, revision DESC LIMIT 1`, closingEpoch)
+			if err != nil {
+				return nil, err
+			}
+			if len(result.Rows) == 0 {
+				return nil, nil
+			}
+			return result.Rows[0], nil
+		})
+		if err != nil {
+			return fmt.Errorf("find newest version minted under epoch %d: %w", closingEpoch, err)
+		}
+		if newest == nil {
+			return nil
+		}
+		var issueID string
+		var revision int64
+		if err := scanRawSQLValue(&issueID, newest[0]); err != nil {
+			return fmt.Errorf("scan the newest version's issue id: %w", err)
+		}
+		if err := scanRawSQLValue(&revision, newest[1]); err != nil {
+			return fmt.Errorf("scan the newest version's revision: %w", err)
+		}
+		return RunTx(ctx, provider, func(ctx context.Context, uw UnitOfWork) (string, error) {
+			_, err := uw.RawSQLUseCase().Exec(ctx,
+				"UPDATE issue_versions SET removed_at = ?, removed_reason = ? WHERE issue_id = ? AND revision = ? AND removed_at IS NULL",
+				time.Now().UTC(), issueops.VersionRemovalReasonReorganization, issueID, revision)
+			return fmt.Sprintf("bd: restore lost %s@%d (fixture)", issueID, revision), err
+		})
+	}
+
 	return conformance.EpochFixture{
 		IssuePrefix: prefix,
 		CurrentEpoch: func(ctx context.Context, storeID string) (int, error) {
@@ -175,7 +221,13 @@ func newUOWEpochFixture(t *testing.T, ctx context.Context, prefix string) confor
 			})
 		},
 		BumpEpoch: func(ctx context.Context, storeID string, trigger conformance.EpochBumpTrigger) (int, error) {
-			return RunTxResult(ctx, provider, func(ctx context.Context, uw UnitOfWork) (int, string, error) {
+			closing, err := RunTxRead(ctx, provider, func(ctx context.Context, uw UnitOfWork) (int, error) {
+				return uowCurrentEpochInTx(ctx, uw)
+			})
+			if err != nil {
+				return 0, err
+			}
+			epoch, err := RunTxResult(ctx, provider, func(ctx context.Context, uw UnitOfWork) (int, string, error) {
 				if _, err := uowCurrentEpochInTx(ctx, uw); err != nil {
 					return 0, "", fmt.Errorf("store epoch: bump: ensure seeded: %w", err)
 				}
@@ -191,6 +243,15 @@ func newUOWEpochFixture(t *testing.T, ctx context.Context, prefix string) confor
 				}
 				return epoch, fmt.Sprintf("bd: store epoch bump (%s)", trigger.String()), nil
 			})
+			if err != nil {
+				return 0, err
+			}
+			if trigger == conformance.EpochBumpTriggerRestore {
+				if err := loseNewestMintUnder(ctx, closing); err != nil {
+					return 0, fmt.Errorf("model the restore losing a version: %w", err)
+				}
+			}
+			return epoch, nil
 		},
 		MintUnderEpoch: func(ctx context.Context, storeID, id string) (conformance.Address, error) {
 			// This leg's CreateIssue goes through domain.IssueUseCase.CreateIssue
@@ -219,7 +280,7 @@ func newUOWEpochFixture(t *testing.T, ctx context.Context, prefix string) confor
 			}
 			var count int
 			if err := kit.QueryScalar(ctx,
-				"SELECT COUNT(*) FROM issue_versions WHERE issue_id = ? AND revision = ?",
+				"SELECT COUNT(*) FROM issue_versions WHERE issue_id = ? AND revision = ? AND removed_at IS NULL",
 				[]any{issueID, revision}, &count); err != nil {
 				return false, err
 			}
@@ -230,13 +291,13 @@ func newUOWEpochFixture(t *testing.T, ctx context.Context, prefix string) confor
 			if err != nil {
 				return conformance.RetentionAnswer{}, err
 			}
-			var revisionCount int
+			var liveRevisionCount int
 			if err := kit.QueryScalar(ctx,
-				"SELECT COUNT(*) FROM issue_versions WHERE issue_id = ? AND revision = ?",
-				[]any{issueID, revision}, &revisionCount); err != nil {
-				return conformance.RetentionAnswer{}, fmt.Errorf("resolve %s: count exact revision: %w", address, err)
+				"SELECT COUNT(*) FROM issue_versions WHERE issue_id = ? AND revision = ? AND removed_at IS NULL",
+				[]any{issueID, revision}, &liveRevisionCount); err != nil {
+				return conformance.RetentionAnswer{}, fmt.Errorf("resolve %s: count live exact revision: %w", address, err)
 			}
-			if revisionCount > 0 {
+			if liveRevisionCount > 0 {
 				return conformance.RetentionAnswer{Restriction: conformance.RestrictionLive, ProducingStore: storeID}, nil
 			}
 			var issueVersionCount int
