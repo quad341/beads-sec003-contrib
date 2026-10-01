@@ -121,3 +121,22 @@ func TestDbProxyChildIdleTimeoutHelpHasNoForcedWindow(t *testing.T) {
 	assert.NotContains(t, f.Usage, "45s",
 		"db-proxy-child --idle-timeout help mentions a 45s forced window, which be-hjyio's re-scoping dropped")
 }
+
+// TestDbProxyChildIdleTimeoutHelpKeepsOmittedDefaultAndNever guards be-7272o's
+// second acceptance criterion. gastownhall/beads#6753 (be-ijli2/be-pc60t)
+// rewrites this same flag's help line: its contract is that the parent resolves
+// an omitted value to the default (configfile.DefaultProxyIdleTimeout) before
+// this flag is ever set, and that 0 means never. Ours is BEADS_EPHEMERAL_ROOT=1
+// (TestDbProxyChildIdleTimeoutHelpNamesEphemeralRoot). The two PRs conflict on
+// that one line, so whichever merges second must keep both wordings; pinning
+// the default and "never" here, next to the ephemeral-root pin, makes a
+// conflict resolution that drops either sentence fail a test instead of
+// silently clobbering the other PR's wording.
+func TestDbProxyChildIdleTimeoutHelpKeepsOmittedDefaultAndNever(t *testing.T) {
+	f := dbProxyChildCmd.Flags().Lookup("idle-timeout")
+	require.NotNil(t, f, "db-proxy-child does not register --idle-timeout")
+	assert.Contains(t, f.Usage, configfile.DefaultProxyIdleTimeout.String(),
+		"db-proxy-child --idle-timeout help does not state the default an omitted value resolves to")
+	assert.Contains(t, f.Usage, "never",
+		"db-proxy-child --idle-timeout help does not say 0 means never")
+}
