@@ -92,7 +92,7 @@ func newDatabaseServer(backend proxy.Backend, rootDir, configPath, logPath, dolt
 func init() {
 	dbProxyChildCmd.Flags().StringVar(&dbProxyChildRoot, "root", "", "root directory holding proxy.lock, proxy.pid, proxy.log")
 	dbProxyChildCmd.Flags().IntVar(&dbProxyChildPort, "port", 0, "port to listen on")
-	dbProxyChildCmd.Flags().DurationVar(&dbProxyChildIdleTimeout, "idle-timeout", 0, "idle timeout before shutdown (0 or negative = never shut down). BEADS_EPHEMERAL_ROOT=1 forbids pairing a throwaway root with never-idle: an explicit 0 or negative --proxied-server-idle-timeout is refused before this child is ever launched (no other value enables the check, and it changes nothing else)")
+	dbProxyChildCmd.Flags().DurationVar(&dbProxyChildIdleTimeout, "idle-timeout", 0, "idle timeout before shutdown; the parent proxy resolves an omitted value to 30s before ever invoking this flag (see bd init --proxied-server-idle-timeout), 0 or negative = never shut down. BEADS_EPHEMERAL_ROOT=1 forbids pairing a throwaway root with never-idle: an explicit 0 or negative --proxied-server-idle-timeout is refused before this child is ever launched (no other value enables the check, and it changes nothing else)")
 	dbProxyChildCmd.Flags().StringVar(&dbProxyChildBackend, "backend", "",
 		"backend kind: "+strings.Join(proxy.KnownBackendNames(), " | "))
 	dbProxyChildCmd.Flags().StringVar(&dbProxyChildConfig, "config", "", "path to backend server config (e.g. dolt sql-server YAML)")
